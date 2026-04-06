@@ -13,6 +13,7 @@ import Students from "./pages/Students";
 import Classes from "./pages/Classes";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/students" element={<DashboardLayout allowedRoles={["teacher"]}><Students /></DashboardLayout>} />
             <Route path="/classes" element={<DashboardLayout allowedRoles={["teacher"]}><Classes /></DashboardLayout>} />
             <Route path="/reports" element={<DashboardLayout allowedRoles={["teacher"]}><Reports /></DashboardLayout>} />
+            <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />
             <Route path="/settings" element={<DashboardLayout><Settings /></DashboardLayout>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

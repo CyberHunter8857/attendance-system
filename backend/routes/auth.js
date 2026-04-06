@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_super_secret_key";
 // Signup Route
 router.post("/signup", async (req, res) => {
     try {
-        const { name, email, password, role } = req.body;
+        const { name, email, password, role, photo } = req.body;
 
         // Check if user already exists
         const existingUser = await User.findOne({ email });
@@ -22,12 +22,36 @@ router.post("/signup", async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
+        // Handle Photo Save
+        let photoPath = null;
+        if (photo && photo.startsWith("data:image")) {
+            const fs = require("fs");
+            const path = require("path");
+            
+            // Extract base64 data
+            const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                const imageBuffer = Buffer.from(matches[2], "base64");
+                const uploadDir = path.join(__dirname, "../uploads/photos");
+                
+                // Ensure directory exists
+                if (!fs.existsSync(uploadDir)) {
+                    fs.mkdirSync(uploadDir, { recursive: true });
+                }
+
+                const fileName = `${Date.now()}_${name.replace(/\s+/g, '_')}.png`;
+                photoPath = `/uploads/photos/${fileName}`;
+                fs.writeFileSync(path.join(uploadDir, fileName), imageBuffer);
+            }
+        }
+
         // Create User
         const newUser = new User({
             name,
             email,
             password: hashedPassword,
-            role: role || "student"
+            role: role || "student",
+            photo: photoPath
         });
 
         await newUser.save();
@@ -70,7 +94,8 @@ router.post("/login", async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                photo: user.photo
             }
         });
     } catch (error) {

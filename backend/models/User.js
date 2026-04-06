@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     role: { type: String, enum: ["teacher", "student"], default: "student" },
+    photo: { type: String, default: null }, // Stores local file path
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

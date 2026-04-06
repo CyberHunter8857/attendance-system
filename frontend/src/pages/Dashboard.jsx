@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { StartSessionModal } from "@/components/attendance/StartSessionModal";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const StudentDashboard = ({ user }) => {
   const [history, setHistory] = useState([]);
+  const [stats, setStats] = useState({ attendanceRate: 100, totalCheckins: 0, missedClasses: 0 });
   const [activeSessions, setActiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const { token } = useAuth();
@@ -21,7 +23,10 @@ const StudentDashboard = ({ user }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       const histData = await histRes.json();
-      if (histRes.ok) setHistory(histData);
+      if (histRes.ok) {
+        setHistory(histData.history || []);
+        if (histData.stats) setStats(histData.stats);
+      }
 
       const activeRes = await fetch(`http://localhost:5000/api/attendance/active`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -77,9 +82,9 @@ const StudentDashboard = ({ user }) => {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <KPICard title="Attendance Rate" value="---%" icon={CheckCircle} variant="success" />
-        <KPICard title="Total Check-ins" value={history.length.toString()} icon={Radio} variant="info" />
-        <KPICard title="Classes Missed" value="0" icon={AlertTriangle} variant="warning" />
+        <KPICard title="Attendance Rate" value={`${stats.attendanceRate}%`} icon={CheckCircle} variant="success" />
+        <KPICard title="Total Check-ins" value={stats.totalCheckins.toString()} icon={Radio} variant="info" />
+        <KPICard title="Classes Missed" value={stats.missedClasses.toString()} icon={AlertTriangle} variant="warning" />
       </div>
 
       {activeSessions.length > 0 && (
@@ -127,7 +132,7 @@ const StudentDashboard = ({ user }) => {
                       {new Date(record.timestamp).toLocaleString()} • {record.room}
                     </p>
                   </div>
-                  <Badge variant="success" className="bg-success text-success-foreground capitalize">
+                  <Badge variant={record.status === "present" ? "success" : "destructive"} className={record.status === "present" ? "bg-success text-success-foreground capitalize" : "capitalize"}>
                     {record.status}
                   </Badge>
                 </div>
@@ -143,17 +148,67 @@ const StudentDashboard = ({ user }) => {
 const Dashboard = () => {
   const { user, token } = useAuth();
   const [activeSessions, setActiveSessions] = useState([]);
+  const [closedSessions, setClosedSessions] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [sessionAttendance, setSessionAttendance] = useState([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
   const { toast } = useToast();
   
-  const isStudent = user?.role === "student";
-
-  const fetchActiveSessions = async () => {
+  const handleSessionClick = async (session) => {
+    setSelectedSession(session);
+    setLoadingAttendance(true);
+    setSessionAttendance([]);
+    
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/active", {
+      const res = await fetch(`http://localhost:5000/api/attendance/session/${session._id}/attendance`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
-      if (res.ok) setActiveSessions(data);
+      if (res.ok) {
+        setSessionAttendance(data.records || []);
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load attendees." });
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
+  
+  const isStudent = user?.role === "student";
+
+  const fetchTeacherSessions = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/attendance/teacher/sessions", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActiveSessions(data.filter(s => s.status === "active"));
+        setClosedSessions(data.filter(s => s.status === "closed"));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchRecentActivity = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/attendance/teacher/recent", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const formattedActivity = data.map(record => ({
+          id: record._id,
+          student: record.studentId?.name || "Unknown Student",
+          room: record.sessionId?.subject || record.room,
+          time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: record.status
+        }));
+        setRecentActivity(formattedActivity);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -161,7 +216,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!isStudent && token) {
-      fetchActiveSessions();
+      fetchTeacherSessions();
+      fetchRecentActivity();
+      
+      const interval = setInterval(() => {
+        fetchTeacherSessions();
+        fetchRecentActivity();
+      }, 5000);
+      
+      return () => clearInterval(interval);
     }
   }, [isStudent, token]);
 
@@ -173,7 +236,7 @@ const Dashboard = () => {
       });
       if (res.ok) {
         toast({ title: "Session Closed", description: "The attendance session has been ended." });
-        fetchActiveSessions();
+        fetchTeacherSessions();
       }
     } catch (err) {
       console.error(err);
@@ -181,13 +244,6 @@ const Dashboard = () => {
   };
 
   // Mock data
-  const recentActivity = [
-    { id: 1, student: "Mayur Tamanke", room: "Room A", time: "2 mins ago", status: "present" },
-    { id: 2, student: "Priya Sharma", room: "Room B", time: "5 mins ago", status: "present" },
-    { id: 3, student: "Rahul Verma", room: "Room A", time: "8 mins ago", status: "present" },
-    { id: 4, student: "Anjali Patel", room: "Room C", time: "12 mins ago", status: "absent" },
-  ];
-
   const scannerStatus = [
     { id: "scanner_01", name: "Room A - Pi3B+", status: "online", detections: 24 },
     { id: "scanner_02", name: "Room B - Pi4", status: "online", detections: 18 },
@@ -207,7 +263,7 @@ const Dashboard = () => {
             Monitor attendance and system status in real-time
           </p>
         </div>
-        <StartSessionModal onSessionStarted={fetchActiveSessions} />
+        <StartSessionModal onSessionStarted={() => { fetchTeacherSessions(); fetchRecentActivity(); }} />
       </div>
 
       {activeSessions.length > 0 && (
@@ -233,6 +289,34 @@ const Dashboard = () => {
                </CardContent>
              </Card>
            ))}
+         </div>
+      )}
+
+      {closedSessions.length > 0 && (
+         <div>
+           <h2 className="text-xl font-bold text-foreground mb-4">Past Sessions</h2>
+           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+             {closedSessions.map((session) => (
+               <Card 
+                 key={session._id} 
+                 className="opacity-75 cursor-pointer hover:opacity-100 transition-opacity hover:shadow-md border-primary/20"
+                 onClick={() => handleSessionClick(session)}
+               >
+                 <CardHeader className="pb-3">
+                   <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                          {session.subject}
+                        </CardTitle>
+                        <CardDescription>{new Date(session.createdAt || session.date).toLocaleDateString()}</CardDescription>
+                      </div>
+                      <Badge variant="secondary">Closed</Badge>
+                   </div>
+                 </CardHeader>
+               </Card>
+             ))}
+           </div>
          </div>
       )}
 
@@ -298,6 +382,43 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!selectedSession} onOpenChange={(open) => !open && setSelectedSession(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Session Attendance: {selectedSession?.subject}</DialogTitle>
+            <DialogDescription>
+              {selectedSession ? new Date(selectedSession.createdAt || selectedSession.date).toLocaleString() : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto pr-2">
+            {loadingAttendance ? (
+              <p className="text-center text-muted-foreground py-8 animate-pulse">Loading attendance...</p>
+            ) : sessionAttendance.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No students marked attendance for this session.</p>
+            ) : (
+              <div className="space-y-4">
+                {sessionAttendance.map((record) => (
+                  <div key={record._id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div>
+                      <p className="font-medium text-foreground">{record.studentId?.name || "Unknown Student"}</p>
+                      <p className="text-xs text-muted-foreground">{record.studentId?.email || ""}</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="success" className="bg-success text-success-foreground capitalize">
+                        {record.status}
+                      </Badge>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

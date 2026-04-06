@@ -5,13 +5,20 @@ const Student = require("./models/Student");
 const authRoutes = require("./routes/auth");
 require("dotenv").config();
 
+const path = require("path");
+
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cors());
+
+// Serve static photo uploads
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Routes
 app.use("/api/auth", authRoutes);
 const attendanceRoutes = require("./routes/attendance");
+
 app.use("/api/attendance", attendanceRoutes);
 
 // ✅ Replace MongoDB local with Atlas

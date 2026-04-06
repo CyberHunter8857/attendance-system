@@ -56,8 +56,12 @@ const Header = () => {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
-                <User className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="rounded-full overflow-hidden border border-border" aria-label="User menu">
+                {user?.photo ? (
+                  <img src={`http://localhost:5000${user.photo}`} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="h-5 w-5" />
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
@@ -68,7 +72,7 @@ const Header = () => {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate('/settings')}>Profile</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/profile')}>Profile</DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/settings')}>Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50">
