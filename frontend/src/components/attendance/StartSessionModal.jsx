@@ -13,18 +13,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Calendar, BookOpen, PlusCircle } from "lucide-react";
+import { Calendar, BookOpen, PlusCircle, Network } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function StartSessionModal({ onSessionStarted }) {
+export function StartSessionModal({ onSessionStarted, defaultSubject = "", defaultBranch = "", triggerClassName = "" }) {
   const [open, setOpen] = useState(false);
-  const [subject, setSubject] = useState("");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [branch, setBranch] = useState(defaultBranch);
   const [isLoading, setIsLoading] = useState(false);
   const { token } = useAuth();
   const { toast } = useToast();
 
   const handleStart = async (e) => {
     e.preventDefault();
-    if (!subject) return;
+    if (!subject || !branch) {
+      toast({ variant: "destructive", title: "Error", description: "Subject and Branch are required." });
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -34,7 +39,7 @@ export function StartSessionModal({ onSessionStarted }) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ subject }),
+        body: JSON.stringify({ subject, branch }),
       });
 
       const data = await response.json();
@@ -47,6 +52,7 @@ export function StartSessionModal({ onSessionStarted }) {
 
       setOpen(false);
       setSubject("");
+      setBranch("");
       if (onSessionStarted) onSessionStarted(data);
     } catch (error) {
       toast({
@@ -62,7 +68,7 @@ export function StartSessionModal({ onSessionStarted }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className={`gap-2 ${triggerClassName}`}>
           <PlusCircle className="h-4 w-4" />
           Start Attendance
         </Button>
@@ -90,6 +96,25 @@ export function StartSessionModal({ onSessionStarted }) {
               />
             </div>
             <div className="grid gap-2">
+              <Label htmlFor="branch" className="flex items-center gap-2">
+                <Network className="h-4 w-4 text-muted-foreground" />
+                Target Branch
+              </Label>
+              <Select value={branch} onValueChange={setBranch} required>
+                <SelectTrigger id="branch">
+                  <SelectValue placeholder="Select target branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Computer Science">Computer Science</SelectItem>
+                  <SelectItem value="ENTC">ENTC</SelectItem>
+                  <SelectItem value="IT">IT</SelectItem>
+                  <SelectItem value="Mechanical">Mechanical</SelectItem>
+                  <SelectItem value="Electrical">Electrical</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
               <Label className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 Date
@@ -98,7 +123,7 @@ export function StartSessionModal({ onSessionStarted }) {
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isLoading || !subject}>
+            <Button type="submit" disabled={isLoading || !subject || !branch}>
               {isLoading ? "Starting..." : "Start Session"}
             </Button>
           </DialogFooter>

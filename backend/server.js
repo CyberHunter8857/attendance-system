@@ -18,8 +18,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // Routes
 app.use("/api/auth", authRoutes);
 const attendanceRoutes = require("./routes/attendance");
+const classesRoutes = require("./routes/classes");
 
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/classes", classesRoutes);
 
 // ✅ Replace MongoDB local with Atlas
 const MONGO_URI = process.env.MONGO_URI ||

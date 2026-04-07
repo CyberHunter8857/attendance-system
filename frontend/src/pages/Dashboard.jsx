@@ -6,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
-import { StartSessionModal } from "@/components/attendance/StartSessionModal";
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const StudentDashboard = ({ user }) => {
   const [history, setHistory] = useState([]);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [stats, setStats] = useState({ attendanceRate: 100, totalCheckins: 0, missedClasses: 0 });
   const [activeSessions, setActiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +124,7 @@ const StudentDashboard = ({ user }) => {
              <p className="text-sm text-muted-foreground">No attendance records found.</p>
           ) : (
             <div className="space-y-4">
-              {history.map((record) => (
+              {(showAllHistory ? history : history.slice(0, 5)).map((record) => (
                 <div key={record._id} className="flex items-center justify-between rounded-lg border border-border p-3">
                   <div className="flex-1">
                     <p className="font-medium text-foreground">{record.sessionId?.subject}</p>
@@ -137,6 +138,16 @@ const StudentDashboard = ({ user }) => {
                   </Badge>
                 </div>
               ))}
+              
+              {history.length > 5 && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-4"
+                  onClick={() => setShowAllHistory(!showAllHistory)}
+                >
+                  {showAllHistory ? "Show Less" : "Show All History"}
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -149,7 +160,10 @@ const Dashboard = () => {
   const { user, token } = useAuth();
   const [activeSessions, setActiveSessions] = useState([]);
   const [closedSessions, setClosedSessions] = useState([]);
+  const [showAllPastSessions, setShowAllPastSessions] = useState(false);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [showAllRecentActivity, setShowAllRecentActivity] = useState(false);
+  const [stats, setStats] = useState({ totalStudents: 0, presentNow: 0, activeScanners: "0/0", alerts: 0 });
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionAttendance, setSessionAttendance] = useState([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
@@ -214,14 +228,30 @@ const Dashboard = () => {
     }
   };
 
+  const fetchStats = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/attendance/teacher/stats", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStats(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (!isStudent && token) {
       fetchTeacherSessions();
       fetchRecentActivity();
+      fetchStats();
       
       const interval = setInterval(() => {
         fetchTeacherSessions();
         fetchRecentActivity();
+        fetchStats();
       }, 5000);
       
       return () => clearInterval(interval);
@@ -263,7 +293,7 @@ const Dashboard = () => {
             Monitor attendance and system status in real-time
           </p>
         </div>
-        <StartSessionModal onSessionStarted={() => { fetchTeacherSessions(); fetchRecentActivity(); }} />
+
       </div>
 
       {activeSessions.length > 0 && (
@@ -296,7 +326,7 @@ const Dashboard = () => {
          <div>
            <h2 className="text-xl font-bold text-foreground mb-4">Past Sessions</h2>
            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-             {closedSessions.map((session) => (
+             {(showAllPastSessions ? closedSessions : closedSessions.slice(0, 6)).map((session) => (
                <Card 
                  key={session._id} 
                  className="opacity-75 cursor-pointer hover:opacity-100 transition-opacity hover:shadow-md border-primary/20"
@@ -317,15 +347,24 @@ const Dashboard = () => {
                </Card>
              ))}
            </div>
+           {closedSessions.length > 6 && (
+             <Button
+               variant="outline"
+               className="w-full mt-4"
+               onClick={() => setShowAllPastSessions(!showAllPastSessions)}
+             >
+               {showAllPastSessions ? "Show Less" : "Show All Past Sessions"}
+             </Button>
+           )}
          </div>
       )}
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="Total Students" value="156" icon={Users} variant="default" />
-        <KPICard title="Present Now" value="142" icon={CheckCircle} trend="up" trendValue="8.2%" variant="success" />
-        <KPICard title="Active Scanners" value="2/3" icon={Radio} variant="info" />
-        <KPICard title="Alerts" value="3" icon={AlertTriangle} variant="warning" />
+        <KPICard title="Total Students" value={stats.totalStudents.toString()} icon={Users} variant="default" />
+        <KPICard title="Present Now" value={stats.presentNow.toString()} icon={CheckCircle} variant="success" />
+        <KPICard title="Active Scanners" value={stats.activeScanners} icon={Radio} variant="info" />
+        <KPICard title="Alerts" value={stats.alerts.toString()} icon={AlertTriangle} variant="warning" />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -337,7 +376,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentActivity.map((activity) => (
+              {(showAllRecentActivity ? recentActivity : recentActivity.slice(0, 5)).map((activity) => (
                 <div key={activity.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                   <div className="flex-1">
                     <p className="font-medium text-foreground">{activity.student}</p>
@@ -350,6 +389,15 @@ const Dashboard = () => {
                   </Badge>
                 </div>
               ))}
+              {recentActivity.length > 5 && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-4"
+                  onClick={() => setShowAllRecentActivity(!showAllRecentActivity)}
+                >
+                  {showAllRecentActivity ? "Show Less" : "Show All Activity"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

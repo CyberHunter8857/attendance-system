@@ -13,17 +13,26 @@ router.post("/start", auth, async (req, res) => {
             return res.status(403).json({ error: "Access denied" });
         }
         
-        const { subject } = req.body;
-        if (!subject) {
-            return res.status(400).json({ error: "Subject is required" });
+        const { subject, branch } = req.body;
+        if (!subject || !branch) {
+            return res.status(400).json({ error: "Subject and Branch are required" });
         }
 
         const session = new ClassSession({
             subject,
+            branch,
             teacherId: req.user.id
         });
         
         await session.save();
+
+        // Update lastAttended timestamp for the corresponding Class
+        const Class = require("../models/Class");
+        await Class.findOneAndUpdate(
+            { name: subject, branch: branch, teacherId: req.user.id },
+            { lastAttended: Date.now() }
+        );
+
         res.status(201).json(session);
     } catch (error) {
         res.status(500).json({ error: "Server error" });
@@ -56,7 +65,12 @@ router.put("/stop/:id", auth, async (req, res) => {
 // Get active sessions
 router.get("/active", auth, async (req, res) => {
     try {
-        const sessions = await ClassSession.find({ status: "active" }).populate("teacherId", "name");
+        let filter = { status: "active" };
+        if (req.user.role === "student" && req.user.branch) {
+            filter.branch = req.user.branch;
+        }
+
+        const sessions = await ClassSession.find(filter).populate("teacherId", "name");
         res.json(sessions);
     } catch (error) {
         res.status(500).json({ error: "Server error" });
@@ -70,9 +84,23 @@ router.get("/teacher/sessions", auth, async (req, res) => {
             return res.status(403).json({ error: "Access denied" });
         }
         const sessions = await ClassSession.find({ teacherId: req.user.id })
-            .sort({ createdAt: -1 })
-            .limit(10);
-        res.json(sessions);
+            .sort({ createdAt: -1 });
+
+        const sessionIds = sessions.map(s => s._id);
+        const attendanceCounts = await AttendanceRecord.aggregate([
+            { $match: { sessionId: { $in: sessionIds } } },
+            { $group: { _id: "$sessionId", count: { $sum: 1 } } }
+        ]);
+
+        const sessionsWithCounts = sessions.map(session => {
+            const countObj = attendanceCounts.find(c => c._id.toString() === session._id.toString());
+            return {
+                ...session.toObject(),
+                presentCount: countObj ? countObj.count : 0
+            };
+        });
+
+        res.json(sessionsWithCounts);
     } catch (error) {
         res.status(500).json({ error: "Server error" });
     }
@@ -148,7 +176,17 @@ router.get("/student/:id", auth, async (req, res) => {
             .populate("sessionId", "subject date status")
             .lean();
 
-        const allSessions = await ClassSession.find().sort({ createdAt: -1 }).lean();
+        const targetStudent = await User.findById(req.params.id);
+        if (!targetStudent) {
+            return res.status(404).json({ error: "Student not found" });
+        }
+
+        let sessionFilter = {};
+        if (targetStudent.branch) {
+            sessionFilter.branch = targetStudent.branch;
+        }
+
+        const allSessions = await ClassSession.find(sessionFilter).sort({ createdAt: -1 }).lean();
         const presentSessionIds = new Set(records.map(r => r.sessionId ? r.sessionId._id.toString() : ""));
 
         const combinedHistory = allSessions.map(session => {
@@ -208,11 +246,63 @@ router.get("/teacher/recent", auth, async (req, res) => {
         const records = await AttendanceRecord.find({ sessionId: { $in: sessionIds } })
             .populate("studentId", "name")
             .populate("sessionId", "subject")
-            .sort({ timestamp: -1 })
-            .limit(20);
+            .sort({ timestamp: -1 });
 
         res.json(records);
     } catch (error) {
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Get teacher dashboard KPI stats
+router.get("/teacher/stats", auth, async (req, res) => {
+    try {
+        if (req.user.role !== "teacher") {
+            return res.status(403).json({ error: "Access denied" });
+        }
+
+        // Total Students
+        const totalStudents = await User.countDocuments({ role: "student" });
+
+        // Present Now (Unique students in active sessions)
+        const activeSessions = await ClassSession.find({ status: "active" });
+        const activeSessionIds = activeSessions.map(s => s._id);
+
+        const presentUnique = await AttendanceRecord.distinct("studentId", {
+            sessionId: { $in: activeSessionIds }
+        });
+        const presentNow = presentUnique.length;
+
+        // You can calculate trends here if needed but for now we just return the true integers
+        res.json({
+            totalStudents,
+            presentNow,
+            activeScanners: "2/3", // keep mock if hardware isn't linked
+            alerts: 0
+        });
+
+    } catch (error) {
+        console.error("Stats Error", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Get list of students (filtered by branch optionally)
+router.get("/teacher/students", auth, async (req, res) => {
+    try {
+        if (req.user.role !== "teacher") {
+            return res.status(403).json({ error: "Access denied" });
+        }
+
+        const query = { role: "student" };
+        if (req.query.branch && req.query.branch !== "All") {
+            query.branch = req.query.branch;
+        }
+
+        const students = await User.find(query).select("name email branch photo").sort({ name: 1 });
+        res.json(students);
+    } catch (error) {
+        console.error("Students list error", error);
         res.status(500).json({ error: "Server error" });
     }
 });

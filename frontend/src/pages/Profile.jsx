@@ -59,11 +59,14 @@ const Profile = () => {
               <User className="w-16 h-16 text-primary/50" />
             )}
           </div>
-          <CardHeader className="text-center pb-2">
+          <CardHeader className="text-center pb-2 flex flex-col items-center">
             <CardTitle className="text-2xl font-bold">{user?.name || "Student"}</CardTitle>
-            <CardDescription className="capitalize font-medium text-primary">
+            <CardDescription className="capitalize font-medium text-primary mb-1">
               {user?.role || "User"}
             </CardDescription>
+            {user?.branch && (
+              <Badge variant="secondary" className="w-fit">{user.branch}</Badge>
+            )}
           </CardHeader>
           <CardContent className="w-full text-center pb-8 pt-2">
             <div className="flex items-center justify-center gap-2 text-muted-foreground">

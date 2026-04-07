@@ -10,6 +10,7 @@ import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import LiveMonitor from "./pages/LiveMonitor";
 import Students from "./pages/Students";
+import StudentProfile from "./pages/StudentProfile";
 import Classes from "./pages/Classes";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -52,6 +53,7 @@ const App = () => (
             <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
             <Route path="/monitor" element={<DashboardLayout allowedRoles={["teacher"]}><LiveMonitor /></DashboardLayout>} />
             <Route path="/students" element={<DashboardLayout allowedRoles={["teacher"]}><Students /></DashboardLayout>} />
+            <Route path="/students/:id" element={<DashboardLayout allowedRoles={["teacher"]}><StudentProfile /></DashboardLayout>} />
             <Route path="/classes" element={<DashboardLayout allowedRoles={["teacher"]}><Classes /></DashboardLayout>} />
             <Route path="/reports" element={<DashboardLayout allowedRoles={["teacher"]}><Reports /></DashboardLayout>} />
             <Route path="/profile" element={<DashboardLayout><Profile /></DashboardLayout>} />

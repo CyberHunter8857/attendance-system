@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_super_secret_key";
 // Signup Route
 router.post("/signup", async (req, res) => {
     try {
-        const { name, email, password, role, photo } = req.body;
+        const { name, email, password, role, branch, photo } = req.body;
 
         // Check if user already exists
         const existingUser = await User.findOne({ email });
@@ -51,6 +51,7 @@ router.post("/signup", async (req, res) => {
             email,
             password: hashedPassword,
             role: role || "student",
+            branch: role === "teacher" ? null : branch,
             photo: photoPath
         });
 
@@ -82,7 +83,7 @@ router.post("/login", async (req, res) => {
 
         // Generate Token
         const token = jwt.sign(
-            { id: user._id, role: user.role, name: user.name, email: user.email },
+            { id: user._id, role: user.role, branch: user.branch, name: user.name, email: user.email },
             JWT_SECRET,
             { expiresIn: "7d" }
         );
@@ -95,12 +96,25 @@ router.post("/login", async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
+                branch: user.branch,
                 photo: user.photo
             }
         });
     } catch (error) {
         console.error("Login Error:", error);
         res.status(500).json({ error: "Server error during login" });
+    }
+});
+
+// Get User by ID
+router.get("/user/:id", async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select("-password");
+        if (!user) return res.status(404).json({ error: "User not found" });
+        res.json(user);
+    } catch (error) {
+        console.error("Get User Error:", error);
+        res.status(500).json({ error: "Server error" });
     }
 });
 

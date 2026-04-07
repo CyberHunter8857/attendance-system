@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Radio, Camera, X } from "lucide-react";
 
 const Signup = () => {
@@ -13,6 +14,7 @@ const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("student");
+  const [branch, setBranch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
   // Photo state
@@ -85,6 +87,15 @@ const Signup = () => {
       return;
     }
 
+    if (role === "student" && !branch) {
+      toast({
+        variant: "destructive",
+        title: "Branch Required",
+        description: "Please select your engineering branch.",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -93,7 +104,7 @@ const Signup = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, email, password, role, photo }),
+        body: JSON.stringify({ name, email, password, role, branch, photo }),
       });
 
       const data = await response.json();
@@ -226,7 +237,24 @@ const Signup = () => {
               </RadioGroup>
             </div>
 
-
+            {role === "student" && (
+              <div className="space-y-2">
+                <Label htmlFor="branch">Engineering Branch</Label>
+                <Select value={branch} onValueChange={setBranch} required>
+                  <SelectTrigger id="branch">
+                    <SelectValue placeholder="Select your branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Computer Science">Computer Science</SelectItem>
+                    <SelectItem value="ENTC">ENTC</SelectItem>
+                    <SelectItem value="IT">IT</SelectItem>
+                    <SelectItem value="Mechanical">Mechanical</SelectItem>
+                    <SelectItem value="Electrical">Electrical</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <Button className="w-full mt-4" type="submit" disabled={isLoading || isCapturing}>
               {isLoading ? "Creating account..." : "Sign Up"}
