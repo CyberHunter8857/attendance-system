@@ -3,8 +3,25 @@ const auth = require("../middleware/auth");
 const ClassSession = require("../models/ClassSession");
 const AttendanceRecord = require("../models/AttendanceRecord");
 const User = require("../models/User");
+const Class = require("../models/Class");
 
 const router = express.Router();
+
+// Helper to calculate distance in meters using Haversine formula
+const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; // Earth radius in meters
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // meters
+};
 
 // Teacher starts a session
 router.post("/start", auth, async (req, res) => {
@@ -13,7 +30,7 @@ router.post("/start", auth, async (req, res) => {
             return res.status(403).json({ error: "Access denied" });
         }
         
-        const { subject, branch } = req.body;
+        const { subject, branch, latitude, longitude, radius } = req.body;
         if (!subject || !branch) {
             return res.status(400).json({ error: "Subject and Branch are required" });
         }
@@ -21,13 +38,17 @@ router.post("/start", auth, async (req, res) => {
         const session = new ClassSession({
             subject,
             branch,
-            teacherId: req.user.id
+            teacherId: req.user.id,
+            location: {
+                latitude,
+                longitude
+            },
+            radius: radius || 500
         });
         
         await session.save();
 
         // Update lastAttended timestamp for the corresponding Class
-        const Class = require("../models/Class");
         await Class.findOneAndUpdate(
             { name: subject, branch: branch, teacherId: req.user.id },
             { lastAttended: Date.now() }
@@ -139,7 +160,7 @@ router.post("/mark-present", auth, async (req, res) => {
             return res.status(403).json({ error: "Access denied" });
         }
 
-        const { sessionId } = req.body;
+        const { sessionId, latitude, longitude } = req.body;
         if (!sessionId) {
             return res.status(400).json({ error: "Session ID is required" });
         }
@@ -149,10 +170,35 @@ router.post("/mark-present", auth, async (req, res) => {
             return res.status(400).json({ error: "Invalid or closed session" });
         }
 
+        // Location Check
+        if (session.location && session.location.latitude && session.location.longitude) {
+            if (!latitude || !longitude) {
+                return res.status(400).json({ error: "Location is required to mark attendance" });
+            }
+
+            const distance = getDistance(
+                session.location.latitude,
+                session.location.longitude,
+                latitude,
+                longitude
+            );
+
+            // Allow a small 10% or 10m buffer for GPS jitter
+            const allowedRadius = session.radius + Math.max(10, session.radius * 0.1);
+
+            if (distance > allowedRadius) {
+                return res.status(403).json({ 
+                    error: "You are outside the attendance zone",
+                    distance: Math.round(distance),
+                    required: session.radius
+                });
+            }
+        }
+
         const record = new AttendanceRecord({
             sessionId: session._id,
             studentId: req.user.id,
-            room: "Web Check-in"
+            room: "Geo-tagged Check-in"
         });
 
         await record.save();
@@ -351,11 +397,17 @@ router.get("/teacher/report", auth, async (req, res) => {
             }
             const studentsInBranch = branchStudentsCache[session.branch];
             const sessionRecords = records.filter(r => r.sessionId && r.sessionId._id.toString() === session._id.toString());
-            const presentStudentIds = new Set(sessionRecords.map(r => r.studentId._id.toString()));
+            const presentStudentIds = new Set(
+                sessionRecords
+                    .filter(r => r.studentId && r.studentId._id)
+                    .map(r => r.studentId._id.toString())
+            );
+
+            if (!studentsInBranch) continue;
 
             for (const student of studentsInBranch) {
-                if (presentStudentIds.has(student._id.toString())) {
-                    const rec = sessionRecords.find(r => r.studentId._id.toString() === student._id.toString());
+                if (student && student._id && presentStudentIds.has(student._id.toString())) {
+                    const rec = sessionRecords.find(r => r.studentId && r.studentId._id && r.studentId._id.toString() === student._id.toString());
                     reportData.push({
                         studentName: student.name,
                         email: student.email,

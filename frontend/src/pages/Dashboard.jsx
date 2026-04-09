@@ -14,13 +14,15 @@ import { useRef } from "react";
 
 const FaceVerificationModal = ({ isOpen, onOpenChange, sessionId, onSuccess, user, token }) => {
   const videoRef = useRef(null);
-  const [status, setStatus] = useState("initializing"); // initializing, loading-photo, matching, success, error
+  const [status, setStatus] = useState("initializing"); // initializing, loading-photo, matching, success, marking, error
+  const [errorMessage, setErrorMessage] = useState("");
   const [matchScore, setMatchScore] = useState(0);
   const modelsLoadedRef = useRef(false);
   const matcherRef = useRef(null);
 
   const startVerification = async () => {
     setStatus("initializing");
+    setErrorMessage("");
     setMatchScore(0);
     try {
       // 1. Ensure models are loaded
@@ -91,7 +93,17 @@ const FaceVerificationModal = ({ isOpen, onOpenChange, sessionId, onSuccess, use
                 if (videoRef.current.srcObject) {
                   videoRef.current.srcObject.getTracks().forEach(track => track.stop());
                 }
-                setTimeout(() => onSuccess(sessionId), 1500);
+                
+                // Allow user to see "Identity Verified" for a moment
+                setTimeout(async () => {
+                  try {
+                    setStatus("marking");
+                    await onSuccess(sessionId);
+                  } catch (err) {
+                    setErrorMessage(err.message || "Failed to record attendance.");
+                    setStatus("error");
+                  }
+                }, 1500);
               }
             } else {
               setMatchScore(0);
@@ -163,12 +175,20 @@ const FaceVerificationModal = ({ isOpen, onOpenChange, sessionId, onSuccess, use
                 </div>
              )}
 
+             {status === "marking" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-primary/90 text-white text-center">
+                  <div className="h-12 w-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-xl font-bold">Face Verified!</p>
+                  <p className="text-sm opacity-90">Verifying location & marking attendance...</p>
+                </div>
+             )}
+
              {status === "error" && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-destructive/90 text-white text-center p-6">
                   <AlertTriangle className="h-12 w-12 mb-2" />
                   <p className="font-bold">Verification Failed</p>
-                  <p className="text-xs mt-1">Unable to match face with profile photo. Please ensure good lighting and look directly into the camera.</p>
-                  <Button variant="secondary" size="sm" className="mt-4" onClick={startVerification}>Try Again</Button>
+                  <p className="text-sm mt-1 mb-4">{errorMessage || "Unable to verify identity. Please ensure good lighting."}</p>
+                  <Button variant="secondary" size="sm" onClick={startVerification}>Try Again</Button>
                 </div>
              )}
           </div>
@@ -222,13 +242,28 @@ const StudentDashboard = ({ user }) => {
 
   const markAttendance = async (sessionId) => {
     try {
+      // Get Student Location
+      const position = await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Geolocation is not supported by your browser"));
+        } else {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(pos),
+            (err) => reject(new Error("Please enable location permissions to mark attendance.")),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+          );
+        }
+      });
+
+      const { latitude, longitude } = position.coords;
+
       const res = await fetch("http://localhost:5000/api/attendance/mark-present", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ sessionId })
+        body: JSON.stringify({ sessionId, latitude, longitude })
       });
       const data = await res.json();
       
@@ -241,12 +276,14 @@ const StudentDashboard = ({ user }) => {
       });
       setIsVerifying(false);
       fetchData();
+      return true; // Return success to modal
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Error",
         description: err.message
       });
+      throw err; // Re-throw to let modal know it failed
     }
   };
 

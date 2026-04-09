@@ -10,6 +10,11 @@ const classSessionSchema = new mongoose.Schema({
     date: { type: Date, default: Date.now },
     teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     status: { type: String, enum: ["active", "closed"], default: "active" },
+    location: {
+        latitude: Number,
+        longitude: Number
+    },
+    radius: { type: Number, default: 500 } // in meters
 }, { timestamps: true });
 
 module.exports = mongoose.model("ClassSession", classSessionSchema);

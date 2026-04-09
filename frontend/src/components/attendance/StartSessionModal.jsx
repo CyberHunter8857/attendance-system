@@ -13,13 +13,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Calendar, BookOpen, PlusCircle, Network } from "lucide-react";
+import { Calendar, BookOpen, PlusCircle, Network, MapPin } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function StartSessionModal({ onSessionStarted, defaultSubject = "", defaultBranch = "", triggerClassName = "" }) {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState(defaultSubject);
   const [branch, setBranch] = useState(defaultBranch);
+  const [radius, setRadius] = useState(500);
   const [isLoading, setIsLoading] = useState(false);
   const { token } = useAuth();
   const { toast } = useToast();
@@ -33,13 +34,34 @@ export function StartSessionModal({ onSessionStarted, defaultSubject = "", defau
 
     setIsLoading(true);
     try {
+      // Get Teacher Location
+      const position = await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Geolocation is not supported by your browser"));
+        } else {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(pos),
+            (err) => reject(new Error("Please enable location permissions to start a session.")),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+          );
+        }
+      });
+
+      const { latitude, longitude } = position.coords;
+
       const response = await fetch("http://localhost:5000/api/attendance/start", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ subject, branch }),
+        body: JSON.stringify({ 
+          subject, 
+          branch, 
+          latitude, 
+          longitude, 
+          radius: Number(radius) 
+        }),
       });
 
       const data = await response.json();
@@ -120,6 +142,25 @@ export function StartSessionModal({ onSessionStarted, defaultSubject = "", defau
                 Date
               </Label>
               <Input value={new Date().toLocaleDateString()} disabled />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="radius" className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                Attendance Radius (meters)
+              </Label>
+              <Input
+                id="radius"
+                type="number"
+                placeholder="e.g. 500"
+                value={radius}
+                onChange={(e) => setRadius(e.target.value)}
+                min="10"
+                max="5000"
+                required
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Students must be within this distance from your current location.
+              </p>
             </div>
           </div>
           <DialogFooter>
