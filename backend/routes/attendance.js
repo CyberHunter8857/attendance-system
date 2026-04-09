@@ -307,4 +307,86 @@ router.get("/teacher/students", auth, async (req, res) => {
     }
 });
 
+// Get comprehensive report data
+router.get("/teacher/report", auth, async (req, res) => {
+    try {
+        if (req.user.role !== "teacher") {
+            return res.status(403).json({ error: "Access denied" });
+        }
+
+        const { startDate, endDate, classId } = req.query;
+        let sessionQuery = { teacherId: req.user.id };
+
+        if (startDate && endDate) {
+            sessionQuery.createdAt = {
+                $gte: new Date(startDate),
+                $lte: new Date(new Date(endDate).setHours(23, 59, 59))
+            };
+        }
+
+        if (classId && classId !== "all") {
+            const Class = require("../models/Class");
+            const cls = await Class.findById(classId);
+            if (cls) {
+                sessionQuery.subject = cls.name;
+                sessionQuery.branch = cls.branch;
+            }
+        }
+
+        const sessions = await ClassSession.find(sessionQuery);
+        const sessionIds = sessions.map(s => s._id);
+
+        const records = await AttendanceRecord.find({ sessionId: { $in: sessionIds } })
+            .populate("studentId", "name email branch")
+            .populate("sessionId", "subject branch")
+            .lean();
+
+        const User = require("../models/User");
+        const branchStudentsCache = {};
+        const reportData = [];
+
+        for (const session of sessions) {
+            if (!branchStudentsCache[session.branch]) {
+                branchStudentsCache[session.branch] = await User.find({ role: "student", branch: session.branch }).lean();
+            }
+            const studentsInBranch = branchStudentsCache[session.branch];
+            const sessionRecords = records.filter(r => r.sessionId && r.sessionId._id.toString() === session._id.toString());
+            const presentStudentIds = new Set(sessionRecords.map(r => r.studentId._id.toString()));
+
+            for (const student of studentsInBranch) {
+                if (presentStudentIds.has(student._id.toString())) {
+                    const rec = sessionRecords.find(r => r.studentId._id.toString() === student._id.toString());
+                    reportData.push({
+                        studentName: student.name,
+                        email: student.email,
+                        branch: student.branch,
+                        subject: session.subject,
+                        date: session.createdAt || session.date,
+                        status: "Present",
+                        timestamp: rec.timestamp
+                    });
+                } else {
+                    reportData.push({
+                        studentName: student.name,
+                        email: student.email,
+                        branch: student.branch,
+                        subject: session.subject,
+                        date: session.createdAt || session.date,
+                        status: "Absent",
+                        timestamp: null
+                    });
+                }
+            }
+        }
+
+        // Sort by date descending
+        reportData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        res.json(reportData);
+    } catch (error) {
+        console.error("Report Error:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 module.exports = router;

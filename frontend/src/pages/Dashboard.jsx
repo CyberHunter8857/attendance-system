@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
+import { Progress } from "@/components/ui/progress";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -73,6 +74,25 @@ const StudentDashboard = ({ user }) => {
     }
   };
 
+  const subjectStats = history.reduce((acc, curr) => {
+    if (curr.status === "pending") return acc;
+    const subject = curr.sessionId?.subject;
+    if (!subject) return acc;
+    if (!acc[subject]) acc[subject] = { total: 0, attended: 0 };
+    acc[subject].total++;
+    if (curr.status === "present") acc[subject].attended++;
+    return acc;
+  }, {});
+
+  const subjectAnalytics = Object.entries(subjectStats)
+    .map(([subject, data]) => ({
+      subject,
+      rate: Math.round((data.attended / data.total) * 100),
+      attended: data.attended,
+      total: data.total
+    }))
+    .sort((a, b) => b.rate - a.rate);
+
   return (
     <div className="space-y-6">
       <div>
@@ -106,6 +126,35 @@ const StudentDashboard = ({ user }) => {
                 <Button onClick={() => markAttendance(session._id)}>
                   Check In Now
                 </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {subjectAnalytics.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Subject-wise Analytics</CardTitle>
+            <CardDescription>Track your attendance across all subjects</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-6 sm:grid-cols-2">
+            {subjectAnalytics.map((stat, idx) => (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-foreground">{stat.subject}</span>
+                  <span className={`text-sm font-bold ${stat.rate >= 75 ? 'text-success' : stat.rate >= 50 ? 'text-warning' : 'text-destructive'}`}>
+                    {stat.rate}%
+                  </span>
+                </div>
+                <Progress 
+                  value={stat.rate} 
+                  className="h-2" 
+                  indicatorClassName={stat.rate >= 75 ? 'bg-success' : stat.rate >= 50 ? 'bg-warning' : 'bg-destructive'}
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {stat.attended} / {stat.total} Classes Attended
+                </p>
               </div>
             ))}
           </CardContent>
