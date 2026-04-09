@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema({
         default: null 
     },
     photo: { type: String, default: null }, // Stores local file path
+    faceDescriptor: { type: [Number], default: [] }, // Stores 128-float face signature
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

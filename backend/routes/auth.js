@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_super_secret_key";
 // Signup Route
 router.post("/signup", async (req, res) => {
     try {
-        const { name, email, password, role, branch, photo } = req.body;
+        const { name, email, password, role, branch, photo, faceDescriptor } = req.body;
 
         // Check if user already exists
         const existingUser = await User.findOne({ email });
@@ -52,7 +52,8 @@ router.post("/signup", async (req, res) => {
             password: hashedPassword,
             role: role || "student",
             branch: role === "teacher" ? null : branch,
-            photo: photoPath
+            photo: photoPath,
+            faceDescriptor: faceDescriptor || []
         });
 
         await newUser.save();
@@ -97,12 +98,51 @@ router.post("/login", async (req, res) => {
                 email: user.email,
                 role: user.role,
                 branch: user.branch,
-                photo: user.photo
+                photo: user.photo,
+                faceDescriptor: user.faceDescriptor
             }
         });
     } catch (error) {
         console.error("Login Error:", error);
         res.status(500).json({ error: "Server error during login" });
+    }
+});
+
+// Euclidean Distance Helper
+const getDistance = (desc1, desc2) => {
+    if (!desc1 || !desc2 || desc1.length !== desc2.length) return 1.0;
+    let sum = 0;
+    for (let i = 0; i < desc1.length; i++) {
+        sum += Math.pow(desc1[i] - desc2[i], 2);
+    }
+    return Math.sqrt(sum);
+};
+
+// Check for duplicate face
+router.post("/check-duplicate-face", async (req, res) => {
+    try {
+        const { descriptor } = req.body;
+        if (!descriptor || !Array.isArray(descriptor)) {
+            return res.status(400).json({ error: "Invalid face descriptor" });
+        }
+
+        // Fetch all users with valid face descriptors
+        const users = await User.find({ faceDescriptor: { $exists: true, $not: { $size: 0 } } });
+
+        for (const user of users) {
+             const distance = getDistance(descriptor, user.faceDescriptor);
+             if (distance < 0.6) { // Face-api default threshold for "same person"
+                 return res.json({ 
+                     isDuplicate: true, 
+                     message: "This face is already registered in our system." 
+                 });
+             }
+        }
+
+        return res.json({ isDuplicate: false });
+    } catch (error) {
+        console.error("Check Duplicate Error:", error);
+        res.status(500).json({ error: "Server error during duplicate check" });
     }
 });
 

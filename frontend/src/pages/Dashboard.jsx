@@ -8,7 +8,179 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import * as faceapi from "face-api.js";
+import { useRef } from "react";
+
+const FaceVerificationModal = ({ isOpen, onOpenChange, sessionId, onSuccess, user, token }) => {
+  const videoRef = useRef(null);
+  const [status, setStatus] = useState("initializing"); // initializing, loading-photo, matching, success, error
+  const [matchScore, setMatchScore] = useState(0);
+  const modelsLoadedRef = useRef(false);
+  const matcherRef = useRef(null);
+
+  const startVerification = async () => {
+    setStatus("initializing");
+    setMatchScore(0);
+    try {
+      // 1. Ensure models are loaded
+      if (!modelsLoadedRef.current) {
+        console.log("Loading face-api models...");
+        const MODEL_URL = "/models";
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+        modelsLoadedRef.current = true;
+      }
+
+      // 2. Start Camera
+      console.log("Accessing camera...");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      if (videoRef.current) videoRef.current.srcObject = stream;
+
+      // 3. Load Reference Photo & Descriptor
+      setStatus("loading-photo");
+      console.log("Loading reference photo:", user.photo);
+      const referenceImageUrl = `http://localhost:5000${user.photo}`;
+      const img = await faceapi.fetchImage(referenceImageUrl);
+      const refDetection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+      
+      if (!refDetection) {
+        console.error("No face detected in reference photo!");
+        setStatus("error");
+        return;
+      }
+      
+      matcherRef.current = new faceapi.FaceMatcher(refDetection);
+      console.log("Face matcher initialized.");
+
+      // 4. Update status to trigger matching loop
+      setStatus("matching");
+
+    } catch (err) {
+      console.error("Verification setup error:", err);
+      setStatus("error");
+    }
+  };
+
+  useEffect(() => {
+    let intervalId = null;
+
+    if (isOpen && status === "matching" && videoRef.current) {
+      console.log("Starting matching loop...");
+      intervalId = setInterval(async () => {
+        if (videoRef.current && videoRef.current.readyState === 4 && matcherRef.current) {
+          try {
+            const detections = await faceapi.detectSingleFace(
+              videoRef.current, 
+              new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+            ).withFaceLandmarks().withFaceDescriptor();
+            
+            if (detections) {
+              const match = matcherRef.current.findBestMatch(detections.descriptor);
+              const score = 1 - match.distance; // Higher is better
+              setMatchScore(Math.round(score * 100));
+
+              if (score > 0.6) { // Threshold for success
+                console.log("Face verified! Score:", score);
+                clearInterval(intervalId);
+                setStatus("success");
+                // Stop camera
+                if (videoRef.current.srcObject) {
+                  videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+                }
+                setTimeout(() => onSuccess(sessionId), 1500);
+              }
+            } else {
+              setMatchScore(0);
+            }
+          } catch (err) {
+            console.error("Detection loop error:", err);
+          }
+        }
+      }, 500);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isOpen, status, sessionId, onSuccess]);
+
+  useEffect(() => {
+    if (isOpen) {
+      startVerification();
+    } else {
+       // Cleanup camera when modal closes
+       if (videoRef.current && videoRef.current.srcObject) {
+         videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+       }
+    }
+  }, [isOpen]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Facial Verification</DialogTitle>
+          <DialogDescription>
+            Please look at the camera to verify your identity.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="flex flex-col items-center justify-center p-4">
+          <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-2xl border-2 border-primary/20">
+             <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+             
+             {status === "initializing" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white animate-pulse">
+                  Loading AI Models...
+                </div>
+             )}
+             
+             {status === "loading-photo" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white">
+                  Fetching Profile Snapshot...
+                </div>
+             )}
+
+             {status === "matching" && (
+                <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-lg border border-white/20">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-white font-medium">Matching Confidence</span>
+                    <span className="text-xs text-white font-bold">{matchScore}%</span>
+                  </div>
+                  <Progress value={matchScore} className="h-1.5" indicatorClassName={matchScore > 60 ? "bg-success" : "bg-primary"} />
+                </div>
+             )}
+
+             {status === "success" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-success/90 text-white text-center">
+                  <CheckCircle className="h-16 w-16 mb-2 animate-bounce" />
+                  <p className="text-xl font-bold">Identity Verified!</p>
+                  <p className="text-sm opacity-90">Recording attendance...</p>
+                </div>
+             )}
+
+             {status === "error" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-destructive/90 text-white text-center p-6">
+                  <AlertTriangle className="h-12 w-12 mb-2" />
+                  <p className="font-bold">Verification Failed</p>
+                  <p className="text-xs mt-1">Unable to match face with profile photo. Please ensure good lighting and look directly into the camera.</p>
+                  <Button variant="secondary" size="sm" className="mt-4" onClick={startVerification}>Try Again</Button>
+                </div>
+             )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const StudentDashboard = ({ user }) => {
   const [history, setHistory] = useState([]);
@@ -16,6 +188,8 @@ const StudentDashboard = ({ user }) => {
   const [stats, setStats] = useState({ attendanceRate: 100, totalCheckins: 0, missedClasses: 0 });
   const [activeSessions, setActiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
   const { token } = useAuth();
   const { toast } = useToast();
 
@@ -60,10 +234,12 @@ const StudentDashboard = ({ user }) => {
       
       if (!res.ok) throw new Error(data.error || "Failed to mark attendance");
       
+      
       toast({
         title: "Success",
         description: "You have been marked present."
       });
+      setIsVerifying(false);
       fetchData();
     } catch (err) {
       toast({
@@ -123,7 +299,10 @@ const StudentDashboard = ({ user }) => {
                   <p className="font-semibold text-foreground text-lg">{session.subject}</p>
                   <p className="text-sm text-muted-foreground">Teacher: {session.teacherId?.name}</p>
                 </div>
-                <Button onClick={() => markAttendance(session._id)}>
+                <Button onClick={() => {
+                  setSelectedSessionId(session._id);
+                  setIsVerifying(true);
+                }}>
                   Check In Now
                 </Button>
               </div>
@@ -131,6 +310,16 @@ const StudentDashboard = ({ user }) => {
           </CardContent>
         </Card>
       )}
+
+      {/* Facial Recognition Modal */}
+      <FaceVerificationModal 
+        isOpen={isVerifying} 
+        onOpenChange={setIsVerifying}
+        sessionId={selectedSessionId}
+        onSuccess={markAttendance}
+        user={user}
+        token={token}
+      />
 
       {subjectAnalytics.length > 0 && (
         <Card>

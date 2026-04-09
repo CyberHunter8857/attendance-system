@@ -7,7 +7,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Radio, Camera, X } from "lucide-react";
+import { Radio, Camera, X, UserCheck, Search } from "lucide-react";
+import * as faceapi from "face-api.js";
 
 const Signup = () => {
   const [name, setName] = useState("");
@@ -19,17 +20,24 @@ const Signup = () => {
   
   // Photo state
   const [photo, setPhoto] = useState(null);
+  const [faceDescriptor, setFaceDescriptor] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  
+  // Face Detection State
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const detectionIntervalRef = useRef(null);
   
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const startCamera = async () => {
     setIsCapturing(true);
+    setFaceDetected(false); // Reset
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -44,36 +52,140 @@ const Signup = () => {
     }
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext("2d");
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      // Mirror the image to match the video feed view
-      context.translate(canvasRef.current.width, 0);
-      context.scale(-1, 1);
-      context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      const imageData = canvasRef.current.toDataURL("image/png");
-      setPhoto(imageData);
-      stopCamera();
+      setIsLoading(true); // Show loading while checking duplicate
+      try {
+        // 1. Extract Descriptor
+        const detection = await faceapi.detectSingleFace(
+          videoRef.current, 
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+        ).withFaceLandmarks().withFaceDescriptor();
+
+        if (!detection) {
+          toast({
+            variant: "destructive",
+            title: "Detection Failed",
+            description: "Please position your face clearly and try again."
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        const descriptor = Array.from(detection.descriptor);
+
+        // 2. Check Duplicate on Backend
+        const dupeRes = await fetch("http://localhost:5000/api/auth/check-duplicate-face", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ descriptor })
+        });
+        const dupeData = await dupeRes.json();
+
+        if (dupeData.isDuplicate) {
+          toast({
+            variant: "destructive",
+            title: "Identity Error",
+            description: dupeData.message || "This face is already registered."
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // 3. Capture image if not duplicate
+        const context = canvasRef.current.getContext("2d");
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+        context.translate(canvasRef.current.width, 0);
+        context.scale(-1, 1);
+        context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+        
+        const imageData = canvasRef.current.toDataURL("image/png");
+        setPhoto(imageData);
+        setFaceDescriptor(descriptor);
+        stopCamera();
+      } catch (err) {
+        console.error("Capture/Verification failed", err);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Something went wrong during facial verification."
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   const stopCamera = () => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
     if (videoRef.current && videoRef.current.srcObject) {
       videoRef.current.srcObject.getTracks().forEach(track => track.stop());
     }
     setIsCapturing(false);
   };
 
+  // Load face-api models on component mount
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const MODEL_URL = "/models";
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          // These are for the attendance verification later
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+        setModelsLoaded(true);
+      } catch (err) {
+        console.error("Models loading failed", err);
+      }
+    };
+    loadModels();
+  }, []);
+
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
       if (videoRef.current && videoRef.current.srcObject) {
         videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
+
+  // Detection Loop useEffect
+  useEffect(() => {
+    let intervalId = null;
+
+    if (isCapturing && modelsLoaded) {
+      console.log("Starting face detection loop...");
+      intervalId = setInterval(async () => {
+        if (videoRef.current && videoRef.current.readyState === 4) {
+          try {
+            const detections = await faceapi.detectSingleFace(
+              videoRef.current, 
+              new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+            );
+            setFaceDetected(!!detections);
+          } catch (err) {
+            console.error("Detection error:", err);
+          }
+        }
+      }, 500);
+      detectionIntervalRef.current = intervalId;
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        detectionIntervalRef.current = null;
+      }
+    };
+  }, [isCapturing, modelsLoaded]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -104,7 +216,7 @@ const Signup = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, email, password, role, branch, photo }),
+        body: JSON.stringify({ name, email, password, role, branch, photo, faceDescriptor }),
       });
 
       const data = await response.json();
@@ -149,15 +261,38 @@ const Signup = () => {
             <div className="flex flex-col items-center justify-center mb-6">
               {isCapturing ? (
                 <div className="relative rounded-lg overflow-hidden bg-black w-32 h-32 flex items-center justify-center shadow-inner">
-                  <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+                  <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover scale-x-[-1] transition-opacity ${faceDetected ? 'opacity-100' : 'opacity-70'}`} />
                   <canvas ref={canvasRef} className="hidden" />
-                  <div className="absolute bottom-2 flex gap-1">
-                    <Button type="button" onClick={capturePhoto} variant="secondary" size="sm" className="h-6 px-2 text-xs">
-                      Snap
-                    </Button>
-                    <Button type="button" onClick={stopCamera} variant="destructive" size="icon" className="h-6 w-6">
-                      <X className="h-3 w-3" />
-                    </Button>
+                  
+                  <div className="absolute top-2 right-2">
+                    {faceDetected ? (
+                      <div className="bg-success/90 text-success-foreground rounded-full p-1 shadow-lg">
+                        <UserCheck className="h-4 w-4" />
+                      </div>
+                    ) : (
+                      <div className="bg-black/60 text-white rounded-full p-1 animate-pulse shadow-lg">
+                        <Search className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="absolute bottom-2 flex flex-col items-center gap-1 w-full px-2">
+                    {!faceDetected && <span className="text-[10px] text-white bg-black/50 px-1 rounded">Position your face clearly</span>}
+                    <div className="flex gap-1">
+                      <Button 
+                        type="button" 
+                        onClick={capturePhoto} 
+                        variant={faceDetected ? "secondary" : "ghost"} 
+                        size="sm" 
+                        className="h-6 px-3 text-xs font-semibold"
+                        disabled={!faceDetected}
+                      >
+                        Snap
+                      </Button>
+                      <Button type="button" onClick={stopCamera} variant="destructive" size="icon" className="h-6 w-6">
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ) : photo ? (
