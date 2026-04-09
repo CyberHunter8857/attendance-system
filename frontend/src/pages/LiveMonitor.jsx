@@ -83,18 +83,18 @@ const LiveMonitor = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 px-4 py-6 sm:px-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Live Monitor</h1>
-          <p className="mt-1 text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Live Monitor</h1>
+          <p className="mt-1 text-sm sm:text-base text-muted-foreground">
             Real-time BLE device detection across all scanners
           </p>
         </div>
         <Button
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="gap-2"
+          className="gap-2 w-full sm:w-auto justify-center"
           aria-label="Refresh detections"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -102,11 +102,11 @@ const LiveMonitor = () => {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="border-none sm:border shadow-none sm:shadow-sm">
+        <CardHeader className="px-0 sm:px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Active Detections</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Active Detections</CardTitle>
               <CardDescription>
                 Showing {filteredDetections.length} device(s) currently detected
               </CardDescription>
@@ -123,8 +123,9 @@ const LiveMonitor = () => {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
+        <CardContent className="px-0 sm:px-6">
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border text-left text-sm font-medium text-muted-foreground">
@@ -197,6 +198,66 @@ const LiveMonitor = () => {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-4">
+            {filteredDetections.map((detection) => {
+              const signal = getSignalStrength(detection.rssi);
+              return (
+                <div 
+                  key={detection.id} 
+                  className="rounded-xl border border-border p-4 space-y-3 bg-card hover:bg-muted/20 transition-colors"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-bold text-foreground text-base">
+                        {detection.studentName}
+                      </p>
+                      {detection.studentId && (
+                        <p className="text-xs text-muted-foreground">ID: {detection.studentId}</p>
+                      )}
+                    </div>
+                    <Badge
+                      variant={detection.status === "detected" ? "success" : "outline"}
+                      className={
+                        detection.status === "detected"
+                          ? "bg-success text-success-foreground text-[10px]"
+                          : "border-warning text-warning text-[10px]"
+                      }
+                    >
+                      {detection.status}
+                    </Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Device Info</p>
+                      <code className="block rounded bg-muted/50 px-2 py-1 text-[11px] text-foreground w-fit">
+                        {detection.deviceMac}
+                      </code>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Signal</p>
+                      <div className="flex items-center gap-1.5">
+                        <Signal className={`h-3 w-3 ${signal.color}`} />
+                        <span className={`font-bold ${signal.color}`}>
+                          {detection.rssi} dBm
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Location</p>
+                      <p className="text-foreground font-medium">{detection.room}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Last Seen</p>
+                      <p className="text-foreground">{getTimeSince(detection.timestamp)}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
