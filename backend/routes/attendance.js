@@ -16,8 +16,8 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
     const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c; // meters
@@ -29,7 +29,7 @@ router.post("/start", auth, async (req, res) => {
         if (req.user.role !== "teacher") {
             return res.status(403).json({ error: "Access denied" });
         }
-        
+
         const { subject, branch, latitude, longitude, radius } = req.body;
         if (!subject || !branch) {
             return res.status(400).json({ error: "Subject and Branch are required" });
@@ -45,7 +45,7 @@ router.post("/start", auth, async (req, res) => {
             },
             radius: radius || 500
         });
-        
+
         await session.save();
 
         // Update lastAttended timestamp for the corresponding Class
@@ -133,20 +133,20 @@ router.get("/session/:sessionId/attendance", auth, async (req, res) => {
         if (req.user.role !== "teacher") {
             return res.status(403).json({ error: "Access denied" });
         }
-        
+
         const session = await ClassSession.findById(req.params.sessionId);
         if (!session) {
             return res.status(404).json({ error: "Session not found" });
         }
-        
+
         if (session.teacherId.toString() !== req.user.id.toString()) {
-             return res.status(403).json({ error: "Access denied" });
+            return res.status(403).json({ error: "Access denied" });
         }
 
         const records = await AttendanceRecord.find({ sessionId: req.params.sessionId })
             .populate("studentId", "name email")
             .sort({ timestamp: -1 });
-            
+
         res.json({ session, records });
     } catch (error) {
         res.status(500).json({ error: "Server error" });
@@ -187,7 +187,7 @@ router.post("/mark-present", auth, async (req, res) => {
             const allowedRadius = session.radius + Math.max(10, session.radius * 0.1);
 
             if (distance > allowedRadius) {
-                return res.status(403).json({ 
+                return res.status(403).json({
                     error: "You are outside the attendance zone",
                     distance: Math.round(distance),
                     required: session.radius
@@ -261,7 +261,7 @@ router.get("/student/:id", auth, async (req, res) => {
         const totalClasses = pastOrAttendedSessions.length;
         const attendedClasses = pastOrAttendedSessions.filter(h => h.status === "present").length;
         const missedClasses = pastOrAttendedSessions.filter(h => h.status === "absent").length;
-        
+
         const attendanceRate = totalClasses === 0 ? 100 : Math.round((attendedClasses / totalClasses) * 100);
 
         res.json({
@@ -379,31 +379,51 @@ router.get("/teacher/report", auth, async (req, res) => {
             }
         }
 
-        const sessions = await ClassSession.find(sessionQuery);
-        const sessionIds = sessions.map(s => s._id);
+        const sessions = await ClassSession.find(sessionQuery).sort({ createdAt: -1, date: -1 });
+        
+        // Ensure sessionIds are clean hex strings to prevent CastError if any session has malformed ID
+        const sessionIds = sessions.map(s => {
+            const idStr = s._id.toString();
+            // If the ID was stored as the literal string "ObjectId('...')", clean it up
+            if (idStr.startsWith("ObjectId(")) {
+                return idStr.replace(/ObjectId\(['"](.+)['"]\)/, "$1").replace(/[()"']/g, "");
+            }
+            return s._id;
+        });
 
         const records = await AttendanceRecord.find({ sessionId: { $in: sessionIds } })
             .populate("studentId", "name email branch")
             .populate("sessionId", "subject branch")
             .lean();
 
+        // Optimized Cache-based student lookup
         const User = require("../models/User");
+        const uniqueBranches = [...new Set(sessions.map(s => s.branch).filter(Boolean))];
         const branchStudentsCache = {};
+        
+        // Fetch all students for all relevant branches in one go
+        const allRelevantStudents = await User.find({ 
+            role: "student", 
+            branch: { $in: uniqueBranches } 
+        }).lean();
+
+        // Group students by branch
+        allRelevantStudents.forEach(s => {
+            if (!branchStudentsCache[s.branch]) branchStudentsCache[s.branch] = [];
+            branchStudentsCache[s.branch].push(s);
+        });
+
         const reportData = [];
 
         for (const session of sessions) {
-            if (!branchStudentsCache[session.branch]) {
-                branchStudentsCache[session.branch] = await User.find({ role: "student", branch: session.branch }).lean();
-            }
-            const studentsInBranch = branchStudentsCache[session.branch];
+            const studentsInBranch = branchStudentsCache[session.branch] || [];
             const sessionRecords = records.filter(r => r.sessionId && r.sessionId._id.toString() === session._id.toString());
+            
             const presentStudentIds = new Set(
                 sessionRecords
                     .filter(r => r.studentId && r.studentId._id)
                     .map(r => r.studentId._id.toString())
             );
-
-            if (!studentsInBranch) continue;
 
             for (const student of studentsInBranch) {
                 if (student && student._id && presentStudentIds.has(student._id.toString())) {
@@ -415,7 +435,7 @@ router.get("/teacher/report", auth, async (req, res) => {
                         subject: session.subject,
                         date: session.createdAt || session.date,
                         status: "Present",
-                        timestamp: rec.timestamp
+                        timestamp: rec ? rec.timestamp : null
                     });
                 } else {
                     reportData.push({
@@ -437,7 +457,7 @@ router.get("/teacher/report", auth, async (req, res) => {
         res.json(reportData);
     } catch (error) {
         console.error("Report Error:", error);
-        res.status(500).json({ error: "Server error" });
+        res.status(500).json({ error: "Server error", details: error.message });
     }
 });
 
