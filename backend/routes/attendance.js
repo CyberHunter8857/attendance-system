@@ -7,6 +7,9 @@ const Class = require("../models/Class");
 
 const router = express.Router();
 
+// Memory queue for Live Monitor real-time detections
+const liveDetectionsQueue = [];
+
 // Helper to calculate distance in meters using Haversine formula
 const getDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371e3; // Earth radius in meters
@@ -195,10 +198,20 @@ router.post("/mark-present", auth, async (req, res) => {
             }
         }
 
+        // 3-Factor Strict Verification: Ensure BLE Scanner has recently seen this student
+        const student = await User.findById(req.user.id);
+        const FIVE_MINUTES_MS = 5 * 60 * 1000;
+        
+        if (!student.lastBleSync || (Date.now() - new Date(student.lastBleSync).getTime() > FIVE_MINUTES_MS)) {
+            return res.status(403).json({ 
+                error: "Hardware Scanner (BLE) has not detected your device nearby. Ensure your Bluetooth is on and broadcasting." 
+            });
+        }
+
         const record = new AttendanceRecord({
             sessionId: session._id,
             studentId: req.user.id,
-            room: "Geo-tagged Check-in"
+            room: "3-Factor Check-in (Geo+Face+BLE)"
         });
 
         await record.save();
@@ -459,6 +472,76 @@ router.get("/teacher/report", auth, async (req, res) => {
         console.error("Report Error:", error);
         res.status(500).json({ error: "Server error", details: error.message });
     }
+});
+
+// BLE Device Marks Attendance
+router.post("/mark-ble", async (req, res) => {
+    try {
+        const { mac, rssi, room } = req.body;
+        if (!mac) {
+            return res.status(400).json({ error: "MAC address is required" });
+        }
+
+        // Remove any hyphens or spaces from the incoming identifier
+        const cleanId = mac.replace(/[-\s]/g, "");
+        
+        // Build a flexible regex that allows optional hyphens anywhere
+        // e.g., "12ab" becomes "1-?2-?a-?b"
+        const flexibleRegex = cleanId.split("").join("-?");
+
+        // Search for student with matching macAddress (case-insensitive and format-insensitive)
+        const student = await User.findOne({ 
+            role: "student", 
+            macAddress: new RegExp('^' + flexibleRegex + '$', 'i') 
+        });
+
+        // Add this detection to the live monitor queue ONLY if it is a registered student
+        if (student) {
+            const detectionEvent = {
+                id: student._id.toString(), // Using student ID prevents React rendering duplicates
+                deviceMac: mac,
+                studentId: student._id,
+                studentName: student.name,
+                rssi: rssi || -99,
+                room: room || "Unknown Location",
+                timestamp: new Date().toISOString(),
+                status: "detected"
+            };
+
+            // Deduplication: Remove any previous detection for this exact student
+            const existingIndex = liveDetectionsQueue.findIndex(d => d.studentId && d.studentId.toString() === student._id.toString());
+            if (existingIndex !== -1) {
+                liveDetectionsQueue.splice(existingIndex, 1);
+            }
+
+            liveDetectionsQueue.unshift(detectionEvent);
+            // Keep only the 100 most recent detections in memory
+            if (liveDetectionsQueue.length > 100) liveDetectionsQueue.pop();
+        }
+
+        if (!student) {
+            return res.json({ found: false, student: null });
+        }
+
+        // Update the user's lastBleSync timestamp indicating they are physically near the Raspberry Pi
+        student.lastBleSync = Date.now();
+        await student.save();
+
+        // The exact attendance marking is now STRICTLY enforced in /mark-present which combines Geo+Face+BLE
+        return res.json({ found: true, student: student.name });
+
+    } catch (error) {
+        console.error("BLE mark error:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Get Live Monitor Detections
+router.get("/live-monitor", auth, (req, res) => {
+    // Return only detections from the last 15 seconds for true "live" data
+    const liveTimeout = new Date(Date.now() - 15 * 1000);
+    const recentDbHits = liveDetectionsQueue.filter(d => new Date(d.timestamp) > liveTimeout);
+    res.json(recentDbHits);
 });
 
 module.exports = router;

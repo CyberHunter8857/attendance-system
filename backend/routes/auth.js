@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const User = require("../models/User");
 
 const router = express.Router();
@@ -53,7 +54,8 @@ router.post("/signup", async (req, res) => {
             role: role || "student",
             branch: role === "teacher" ? null : branch,
             photo: photoPath,
-            faceDescriptor: faceDescriptor || []
+            faceDescriptor: faceDescriptor || [],
+            macAddress: role === "student" ? crypto.randomUUID() : null
         });
 
         await newUser.save();
@@ -99,7 +101,8 @@ router.post("/login", async (req, res) => {
                 role: user.role,
                 branch: user.branch,
                 photo: user.photo,
-                faceDescriptor: user.faceDescriptor
+                faceDescriptor: user.faceDescriptor,
+                macAddress: user.macAddress
             }
         });
     } catch (error) {

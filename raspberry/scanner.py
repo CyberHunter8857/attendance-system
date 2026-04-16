@@ -3,7 +3,7 @@ import time
 import requests
 
 #  ***** UPDATE THIS *****
-BACKEND_URL = "http://YOUR_PC_IP:5000/api/identify"     # example: 192.168.1.5
+BACKEND_URL = "http://10.134.2.150:5000/api/attendance/mark-ble"     # example: 192.168.1.5
 
 class ScanDelegate(DefaultDelegate):
     def __init__(self):
@@ -16,9 +16,9 @@ class ScanDelegate(DefaultDelegate):
             print(f"🔹 Updated data: {dev.addr}")
 
 
-def identify(mac):
+def identify(mac, rssi):
     try:
-        res = requests.post(BACKEND_URL, json={"mac": mac})
+        res = requests.post(BACKEND_URL, json={"mac": mac, "rssi": rssi, "room": "Raspberry Pi Scanner"})
         data = res.json()
 
         if data.get("found"):
@@ -41,8 +41,18 @@ def main():
             print("\n----- Detected Devices -----")
 
             for dev in devices:
-                print(f"Device {dev.addr} (RSSI: {dev.rssi} dB)")
-                identify(dev.addr)
+                name = dev.getValueText(9) or dev.getValueText(8) or "Unknown Name"
+                
+                # Extract 128-bit Service UUID if broadcasted (resolves MAC randomization issues)
+                device_id = dev.addr
+                for (adtype, desc, value) in dev.getScanData():
+                    # 6 = Incomplete 128-bit UUIDs, 7 = Complete 128-bit UUIDs
+                    if adtype in [6, 7]:
+                        device_id = value
+                        break
+                
+                print(f"Device {dev.addr} ({name}) | RSSI: {dev.rssi} dB | ID: {device_id}")
+                identify(device_id, dev.rssi)
 
             print("----------------------------\n")
             time.sleep(2)

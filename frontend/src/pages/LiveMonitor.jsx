@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,60 +7,36 @@ import { Input } from "@/components/ui/input";
 import { RefreshCw, Search, Signal } from "lucide-react";
 
 const LiveMonitor = () => {
+  const { token } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [detections, setDetections] = useState([]);
 
-  // Mock detection data
-  const detections = [
-    {
-      id: 1,
-      deviceMac: "67:a6:0f:2e:9d:12",
-      studentId: "3402056",
-      studentName: "Mayur Tamanke",
-      rssi: -66,
-      serviceUUID: "0000fef3-0000-1000-8000-00805f9b34fb",
-      room: "Room A - Pi3B+",
-      timestamp: new Date(Date.now() - 30000).toISOString(),
-      status: "detected",
-    },
-    {
-      id: 2,
-      deviceMac: "45:3c:1a:8f:7e:21",
-      studentId: "3402057",
-      studentName: "Priya Sharma",
-      rssi: -72,
-      serviceUUID: "0000fef3-0000-1000-8000-00805f9b34fb",
-      room: "Room B - Pi4",
-      timestamp: new Date(Date.now() - 120000).toISOString(),
-      status: "detected",
-    },
-    {
-      id: 3,
-      deviceMac: "89:2d:4b:6c:3a:15",
-      studentId: "3402058",
-      studentName: "Rahul Verma",
-      rssi: -58,
-      serviceUUID: "0000fef3-0000-1000-8000-00805f9b34fb",
-      room: "Room A - Pi3B+",
-      timestamp: new Date(Date.now() - 45000).toISOString(),
-      status: "detected",
-    },
-    {
-      id: 4,
-      deviceMac: "12:7f:9e:4a:6d:33",
-      studentId: null,
-      studentName: "Unknown Device",
-      rssi: -45,
-      serviceUUID: "0000180f-0000-1000-8000-00805f9b34fb",
-      room: "Room A - Pi3B+",
-      timestamp: new Date(Date.now() - 15000).toISOString(),
-      status: "unregistered",
-    },
-  ];
+  const fetchDetections = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/attendance/live-monitor", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDetections(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch live monitor data", error);
+    }
+  };
 
-  const handleRefresh = () => {
+  useEffect(() => {
+    fetchDetections(); // Initial fetch
+    // Poll every 3 seconds for near real-time updates
+    const intervalId = setInterval(fetchDetections, 3000);
+    return () => clearInterval(intervalId);
+  }, [token]);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1000);
+    await fetchDetections();
+    setTimeout(() => setIsRefreshing(false), 500);
   };
 
   const getSignalStrength = (rssi) => {

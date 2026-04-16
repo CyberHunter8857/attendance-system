@@ -391,6 +391,8 @@ const Signup = () => {
               </div>
             )}
 
+
+
             <Button className="w-full mt-4" type="submit" disabled={isLoading || isCapturing}>
               {isLoading ? "Creating account..." : "Sign Up"}
             </Button>

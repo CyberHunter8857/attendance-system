@@ -12,6 +12,9 @@ const userSchema = new mongoose.Schema({
     },
     photo: { type: String, default: null }, // Stores local file path
     faceDescriptor: { type: [Number], default: [] }, // Stores 128-float face signature
+    macAddress: { type: String, default: null }, // Stores BLE MAC Address
+    lastBleSync: { type: Date, default: null }, // Stores the timestamp when Raspberry Pi last scanned this user
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);
