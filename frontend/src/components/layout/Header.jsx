@@ -58,8 +58,9 @@ const Header = () => {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full overflow-hidden border border-border" aria-label="User menu">
                 {user?.photo ? (
-                  <img src={`http://localhost:5000${user.photo}`} alt="Profile" className="w-full h-full object-cover" />
+                  <img src={user.photo.startsWith('http') ? user.photo : `http://localhost:5000${user.photo}`} alt="Profile" className="w-full h-full object-cover" />
                 ) : (
+
                   <User className="h-5 w-5" />
                 )}
               </Button>

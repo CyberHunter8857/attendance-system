@@ -37,8 +37,9 @@ const Profile = () => {
   }, [user, token]);
 
   const photoUrl = user?.photo 
-    ? `http://localhost:5000${user.photo}` 
+    ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000${user.photo}`)
     : null;
+
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

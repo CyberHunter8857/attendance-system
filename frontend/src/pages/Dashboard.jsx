@@ -45,7 +45,7 @@ const FaceVerificationModal = ({ isOpen, onOpenChange, sessionId, onSuccess, use
       // 3. Load Reference Photo & Descriptor
       setStatus("loading-photo");
       console.log("Loading reference photo:", user.photo);
-      const referenceImageUrl = `http://localhost:5000${user.photo}`;
+      const referenceImageUrl = user.photo.startsWith('http') ? user.photo : `http://localhost:5000${user.photo}`;
       const img = await faceapi.fetchImage(referenceImageUrl);
       const refDetection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
       
@@ -548,12 +548,7 @@ const Dashboard = () => {
     }
   };
 
-  // Mock data
-  const scannerStatus = [
-    { id: "scanner_01", name: "Room A - Pi3B+", status: "online", detections: 24 },
-    { id: "scanner_02", name: "Room B - Pi4", status: "online", detections: 18 },
-    { id: "scanner_03", name: "Room C - Pi3B+", status: "offline", detections: 0 },
-  ];
+
 
   if (isStudent) {
     return <StudentDashboard user={user} />;
@@ -565,8 +560,9 @@ const Dashboard = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="mt-1 text-muted-foreground">
-            Monitor attendance and system status in real-time
+            Monitor attendance status in real-time
           </p>
+
         </div>
 
       </div>
@@ -644,7 +640,7 @@ const Dashboard = () => {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Recent Activity */}
-        <Card>
+        <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
             <CardDescription>Latest attendance detections</CardDescription>
@@ -677,33 +673,6 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Scanner Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Scanner Status</CardTitle>
-            <CardDescription>Real-time scanner monitoring</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {scannerStatus.map((scanner) => (
-                <div key={scanner.id} className="flex items-center justify-between rounded-lg border border-border p-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-3 w-3 rounded-full ${scanner.status === "online" ? "bg-success" : "bg-destructive"}`} />
-                    <div>
-                      <p className="font-medium text-foreground">{scanner.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {scanner.detections} detections today
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant={scanner.status === "online" ? "outline" : "destructive"} className={scanner.status === "online" ? "border-success text-success" : ""}>
-                    {scanner.status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <Dialog open={!!selectedSession} onOpenChange={(open) => !open && setSelectedSession(null)}>

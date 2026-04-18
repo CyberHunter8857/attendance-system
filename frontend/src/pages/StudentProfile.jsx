@@ -4,14 +4,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Mail, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Mail, Clock, CheckCircle, AlertTriangle, Trash2 } from "lucide-react";
 import KPICard from "@/components/dashboard/KPICard";
+import { useToast } from "@/components/ui/use-toast";
+
 
 const StudentProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const { toast } = useToast();
   const [student, setStudent] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [history, setHistory] = useState([]);
   const [stats, setStats] = useState({ attendanceRate: 0, totalCheckins: 0, missedClasses: 0 });
   const [loading, setLoading] = useState(true);
@@ -46,6 +51,55 @@ const StudentProfile = () => {
     if (token && id) fetchData();
   }, [id, token]);
 
+  const handleDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete ${student.name}? This will remove all their attendance data and profile photo. This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`http://localhost:5000/api/auth/student/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        // If not OK, try to get error message from JSON, or fallback to text/status
+        let errorMessage = `Server Error: ${res.status}`;
+        try {
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const errData = await res.json();
+            errorMessage = errData.error || errorMessage;
+          } else {
+             const text = await res.text();
+             console.error("Non-JSON Error Response:", text);
+          }
+        } catch (e) {
+          console.error("Error parsing error response", e);
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+      toast({
+        title: "Delete Successful",
+        description: "Student and all associated data have been removed."
+      });
+      navigate("/students");
+    } catch (err) {
+
+      toast({
+        variant: "destructive",
+        title: "Deletion Failed",
+        description: err.message
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+
   if (loading) return <div className="p-8 animate-pulse text-center">Loading profile...</div>;
   if (!student) return <div className="p-8 text-center text-destructive">Student not found.</div>;
 
@@ -59,8 +113,9 @@ const StudentProfile = () => {
         <Card className="w-full md:w-1/3">
           <CardContent className="pt-6 flex flex-col items-center text-center space-y-4">
              {student.photo ? (
-               <img src={`http://localhost:5000${student.photo}`} alt="Profile" className="w-32 h-32 rounded-full object-cover shadow-md" />
+               <img src={student.photo.startsWith('http') ? student.photo : `http://localhost:5000${student.photo}`} alt="Profile" className="w-32 h-32 rounded-full object-cover shadow-md" />
              ) : (
+
                <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center shadow-md">
                  <span className="text-4xl text-primary font-bold">{student.name.charAt(0).toUpperCase()}</span>
                </div>
@@ -69,12 +124,25 @@ const StudentProfile = () => {
                <h2 className="text-2xl font-bold text-foreground">{student.name}</h2>
                <Badge variant="secondary" className="mt-2">{student.branch || "No Branch Assigned"}</Badge>
              </div>
-             <div className="w-full border-t border-border pt-4">
-               <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center">
+             <div className="w-full border-t border-border pt-4 px-6 pb-6">
+               <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center mb-4">
                  <Mail className="h-4 w-4" />
                  <span>{student.email}</span>
                </div>
+               
+               {user?.role === "teacher" && (
+                  <Button 
+                    variant="destructive" 
+                    className="w-full gap-2 mt-2" 
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {isDeleting ? "Deleting..." : "Delete Student"}
+                  </Button>
+               )}
              </div>
+
           </CardContent>
         </Card>
 

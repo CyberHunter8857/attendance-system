@@ -336,7 +336,8 @@ router.get("/teacher/stats", auth, async (req, res) => {
         res.json({
             totalStudents,
             presentNow,
-            activeScanners: "2/3", // keep mock if hardware isn't linked
+            activeScanners: "1/1", 
+
             alerts: 0
         });
 

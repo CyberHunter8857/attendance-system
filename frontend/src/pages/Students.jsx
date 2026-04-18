@@ -53,10 +53,7 @@ const Students = () => {
             Manage student profiles and track attendance
           </p>
         </div>
-        <Button className="gap-2" aria-label="Add new student">
-          <UserPlus className="h-4 w-4" />
-          Add Student
-        </Button>
+
       </div>
 
       <Card>
@@ -111,8 +108,9 @@ const Students = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1 flex gap-3 items-center">
                         {student.photo ? (
-                          <img src={`http://localhost:5000${student.photo}`} alt="Profile" className="w-12 h-12 rounded-full object-cover" />
+                          <img src={student.photo.startsWith('http') ? student.photo : `http://localhost:5000${student.photo}`} alt="Profile" className="w-12 h-12 rounded-full object-cover" />
                         ) : (
+
                           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                             <Users className="w-6 h-6 text-primary/50" />
                           </div>

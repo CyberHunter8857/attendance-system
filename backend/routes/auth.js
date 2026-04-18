@@ -3,6 +3,11 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
+const AttendanceRecord = require("../models/AttendanceRecord");
+const auth = require("../middleware/auth");
+const { uploadToCloudinary, deleteFromCloudinary } = require("../utils/cloudinary");
+
+
 
 const router = express.Router();
 
@@ -23,28 +28,19 @@ router.post("/signup", async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Handle Photo Save
+        // Handle Photo Save (Cloudinary)
         let photoPath = null;
         if (photo && photo.startsWith("data:image")) {
-            const fs = require("fs");
-            const path = require("path");
-            
-            // Extract base64 data
-            const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-            if (matches && matches.length === 3) {
-                const imageBuffer = Buffer.from(matches[2], "base64");
-                const uploadDir = path.join(__dirname, "../uploads/photos");
-                
-                // Ensure directory exists
-                if (!fs.existsSync(uploadDir)) {
-                    fs.mkdirSync(uploadDir, { recursive: true });
-                }
-
-                const fileName = `${Date.now()}_${name.replace(/\s+/g, '_')}.png`;
-                photoPath = `/uploads/photos/${fileName}`;
-                fs.writeFileSync(path.join(uploadDir, fileName), imageBuffer);
+            try {
+                photoPath = await uploadToCloudinary(photo, "attendance/profiles");
+            } catch (err) {
+                console.error("Cloudinary upload failed during signup:", err);
+                // Continue without photo or handle error? For now, we'll continue with null if it fails
+                // But usually better to throw error if photo is required.
+                // return res.status(500).json({ error: "Failed to upload profile photo" });
             }
         }
+
 
         // Create User
         const newUser = new User({
@@ -161,4 +157,39 @@ router.get("/user/:id", async (req, res) => {
     }
 });
 
+// Delete Student Route (Teacher only)
+router.delete("/student/:id", auth, async (req, res) => {
+    try {
+        if (req.user.role !== "teacher") {
+            return res.status(403).json({ error: "Access denied. Teachers only." });
+        }
+
+        const student = await User.findById(req.params.id);
+        if (!student) {
+            return res.status(404).json({ error: "Student not found" });
+        }
+
+        if (student.role !== "student") {
+            return res.status(400).json({ error: "You can only delete students" });
+        }
+
+        // 1. Delete Photo from Cloudinary
+        if (student.photo && student.photo.startsWith("http")) {
+            await deleteFromCloudinary(student.photo);
+        }
+
+        // 2. Delete all Attendance Records
+        await AttendanceRecord.deleteMany({ studentId: req.params.id });
+
+        // 3. Delete Student User
+        await User.findByIdAndDelete(req.params.id);
+
+        res.json({ message: "Student and all associated data deleted successfully" });
+    } catch (error) {
+        console.error("Delete Student Error:", error);
+        res.status(500).json({ error: "Server error during student deletion" });
+    }
+});
+
 module.exports = router;
+
