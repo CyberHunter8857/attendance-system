@@ -25,7 +25,7 @@ const Reports = () => {
 
   const fetchClasses = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/classes", {
+      const res = await fetch("/api/classes", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -84,7 +84,7 @@ const Reports = () => {
     setLoading(true);
     try {
       const query = new URLSearchParams({ startDate, endDate, classId: selectedClass }).toString();
-      const res = await fetch(`http://localhost:5000/api/attendance/teacher/report?${query}`, {
+      const res = await fetch(`/api/attendance/teacher/report?${query}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 

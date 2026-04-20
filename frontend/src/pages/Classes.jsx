@@ -22,7 +22,7 @@ const Classes = () => {
   const fetchActiveSessions = async () => {
     if (!token) return;
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/teacher/sessions", {
+      const res = await fetch("/api/attendance/teacher/sessions", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -37,7 +37,7 @@ const Classes = () => {
   const fetchClasses = async () => {
     if (!token) return;
     try {
-      const res = await fetch("http://localhost:5000/api/classes", {
+      const res = await fetch("/api/classes", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -60,7 +60,7 @@ const Classes = () => {
 
   const stopSession = async (sessionId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/stop/${sessionId}`, {
+      const res = await fetch(`/api/attendance/stop/${sessionId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -78,7 +78,7 @@ const Classes = () => {
     if (!newClass.name || !newClass.room || !newClass.branch) return;
     
     try {
-      const res = await fetch("http://localhost:5000/api/classes", {
+      const res = await fetch("/api/classes", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -102,7 +102,7 @@ const Classes = () => {
   const handleDeleteClass = async (classId) => {
     if (!window.confirm("Are you sure you want to delete this class?")) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/classes/${classId}`, {
+      const res = await fetch(`/api/classes/${classId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });

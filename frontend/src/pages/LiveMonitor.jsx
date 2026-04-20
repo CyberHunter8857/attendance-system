@@ -14,7 +14,7 @@ const LiveMonitor = () => {
 
   const fetchDetections = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/live-monitor", {
+      const res = await fetch("/api/attendance/live-monitor", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {

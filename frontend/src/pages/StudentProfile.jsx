@@ -25,7 +25,7 @@ const StudentProfile = () => {
     const fetchData = async () => {
       try {
         // Fetch User Info
-        const userRes = await fetch(`http://localhost:5000/api/auth/user/${id}`, {
+        const userRes = await fetch(`/api/auth/user/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (userRes.ok) {
@@ -34,7 +34,7 @@ const StudentProfile = () => {
         }
 
         // Fetch Attendance Info
-        const histRes = await fetch(`http://localhost:5000/api/attendance/student/${id}`, {
+        const histRes = await fetch(`/api/attendance/student/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (histRes.ok) {
@@ -58,7 +58,7 @@ const StudentProfile = () => {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/auth/student/${id}`, {
+      const res = await fetch(`/api/auth/student/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -113,7 +113,7 @@ const StudentProfile = () => {
         <Card className="w-full md:w-1/3">
           <CardContent className="pt-6 flex flex-col items-center text-center space-y-4">
              {student.photo ? (
-               <img src={student.photo.startsWith('http') ? student.photo : `http://localhost:5000${student.photo}`} alt="Profile" className="w-32 h-32 rounded-full object-cover shadow-md" />
+               <img src={student.photo.startsWith('http') ? student.photo : `${student.photo}`} alt="Profile" className="w-32 h-32 rounded-full object-cover shadow-md" />
              ) : (
 
                <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center shadow-md">

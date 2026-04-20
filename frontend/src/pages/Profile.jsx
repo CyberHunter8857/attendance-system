@@ -19,7 +19,7 @@ const Profile = () => {
       }
       
       try {
-        const res = await fetch(`http://localhost:5000/api/attendance/student/${user.id}`, {
+        const res = await fetch(`/api/attendance/student/${user.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
@@ -37,7 +37,7 @@ const Profile = () => {
   }, [user, token]);
 
   const photoUrl = user?.photo 
-    ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000${user.photo}`)
+    ? (user.photo.startsWith('http') ? user.photo : `${user.photo}`)
     : null;
 
 

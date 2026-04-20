@@ -18,7 +18,7 @@ const Students = () => {
     const fetchStudents = async () => {
       try {
         const qs = branchFilter !== "All" ? `?branch=${encodeURIComponent(branchFilter)}` : "";
-        const res = await fetch(`http://localhost:5000/api/attendance/teacher/students${qs}`, {
+        const res = await fetch(`/api/attendance/teacher/students${qs}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
@@ -108,7 +108,7 @@ const Students = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1 flex gap-3 items-center">
                         {student.photo ? (
-                          <img src={student.photo.startsWith('http') ? student.photo : `http://localhost:5000${student.photo}`} alt="Profile" className="w-12 h-12 rounded-full object-cover" />
+                          <img src={student.photo.startsWith('http') ? student.photo : `${student.photo}`} alt="Profile" className="w-12 h-12 rounded-full object-cover" />
                         ) : (
 
                           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">

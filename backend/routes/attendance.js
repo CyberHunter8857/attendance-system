@@ -4,11 +4,9 @@ const ClassSession = require("../models/ClassSession");
 const AttendanceRecord = require("../models/AttendanceRecord");
 const User = require("../models/User");
 const Class = require("../models/Class");
+const LiveDetection = require("../models/LiveDetection");
 
 const router = express.Router();
-
-// Memory queue for Live Monitor real-time detections
-const liveDetectionsQueue = [];
 
 // Helper to calculate distance in meters using Haversine formula
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -201,10 +199,10 @@ router.post("/mark-present", auth, async (req, res) => {
         // 3-Factor Strict Verification: Ensure BLE Scanner has recently seen this student
         const student = await User.findById(req.user.id);
         const FIVE_MINUTES_MS = 5 * 60 * 1000;
-        
+
         if (!student.lastBleSync || (Date.now() - new Date(student.lastBleSync).getTime() > FIVE_MINUTES_MS)) {
-            return res.status(403).json({ 
-                error: "Hardware Scanner (BLE) has not detected your device nearby. Ensure your Bluetooth is on and broadcasting." 
+            return res.status(403).json({
+                error: "Hardware Scanner (BLE) has not detected your device nearby. Ensure your Bluetooth is on and broadcasting."
             });
         }
 
@@ -336,7 +334,7 @@ router.get("/teacher/stats", auth, async (req, res) => {
         res.json({
             totalStudents,
             presentNow,
-            activeScanners: "1/1", 
+            activeScanners: "1/1",
 
             alerts: 0
         });
@@ -394,7 +392,7 @@ router.get("/teacher/report", auth, async (req, res) => {
         }
 
         const sessions = await ClassSession.find(sessionQuery).sort({ createdAt: -1, date: -1 });
-        
+
         // Ensure sessionIds are clean hex strings to prevent CastError if any session has malformed ID
         const sessionIds = sessions.map(s => {
             const idStr = s._id.toString();
@@ -414,11 +412,11 @@ router.get("/teacher/report", auth, async (req, res) => {
         const User = require("../models/User");
         const uniqueBranches = [...new Set(sessions.map(s => s.branch).filter(Boolean))];
         const branchStudentsCache = {};
-        
+
         // Fetch all students for all relevant branches in one go
-        const allRelevantStudents = await User.find({ 
-            role: "student", 
-            branch: { $in: uniqueBranches } 
+        const allRelevantStudents = await User.find({
+            role: "student",
+            branch: { $in: uniqueBranches }
         }).lean();
 
         // Group students by branch
@@ -432,7 +430,7 @@ router.get("/teacher/report", auth, async (req, res) => {
         for (const session of sessions) {
             const studentsInBranch = branchStudentsCache[session.branch] || [];
             const sessionRecords = records.filter(r => r.sessionId && r.sessionId._id.toString() === session._id.toString());
-            
+
             const presentStudentIds = new Set(
                 sessionRecords
                     .filter(r => r.studentId && r.studentId._id)
@@ -485,39 +483,32 @@ router.post("/mark-ble", async (req, res) => {
 
         // Remove any hyphens or spaces from the incoming identifier
         const cleanId = mac.replace(/[-\s]/g, "");
-        
+
         // Build a flexible regex that allows optional hyphens anywhere
         // e.g., "12ab" becomes "1-?2-?a-?b"
         const flexibleRegex = cleanId.split("").join("-?");
 
         // Search for student with matching macAddress (case-insensitive and format-insensitive)
-        const student = await User.findOne({ 
-            role: "student", 
-            macAddress: new RegExp('^' + flexibleRegex + '$', 'i') 
+        const student = await User.findOne({
+            role: "student",
+            macAddress: new RegExp('^' + flexibleRegex + '$', 'i')
         });
 
-        // Add this detection to the live monitor queue ONLY if it is a registered student
+        // Add this detection to the MongoDB LiveDetection collection if it is a registered student
         if (student) {
-            const detectionEvent = {
-                id: student._id.toString(), // Using student ID prevents React rendering duplicates
-                deviceMac: mac,
-                studentId: student._id,
-                studentName: student.name,
-                rssi: rssi || -99,
-                room: room || "Unknown Location",
-                timestamp: new Date().toISOString(),
-                status: "detected"
-            };
-
-            // Deduplication: Remove any previous detection for this exact student
-            const existingIndex = liveDetectionsQueue.findIndex(d => d.studentId && d.studentId.toString() === student._id.toString());
-            if (existingIndex !== -1) {
-                liveDetectionsQueue.splice(existingIndex, 1);
-            }
-
-            liveDetectionsQueue.unshift(detectionEvent);
-            // Keep only the 100 most recent detections in memory
-            if (liveDetectionsQueue.length > 100) liveDetectionsQueue.pop();
+            // Upsert the detection for this student to prevent duplicates and refresh the timestamp
+            await LiveDetection.findOneAndUpdate(
+                { studentId: student._id },
+                {
+                    deviceMac: mac,
+                    studentName: student.name,
+                    rssi: rssi || -99,
+                    room: room || "Unknown Location",
+                    status: "detected",
+                    createdAt: new Date()
+                },
+                { upsert: true, new: true }
+            );
         }
 
         if (!student) {
@@ -538,11 +529,26 @@ router.post("/mark-ble", async (req, res) => {
 });
 
 // Get Live Monitor Detections
-router.get("/live-monitor", auth, (req, res) => {
-    // Return only detections from the last 15 seconds for true "live" data
-    const liveTimeout = new Date(Date.now() - 15 * 1000);
-    const recentDbHits = liveDetectionsQueue.filter(d => new Date(d.timestamp) > liveTimeout);
-    res.json(recentDbHits);
+router.get("/live-monitor", auth, async (req, res) => {
+    try {
+        // Return only detections from the last 15 seconds for true "live" data
+        const liveTimeout = new Date(Date.now() - 15 * 1000);
+        const recentDbHits = await LiveDetection.find({ createdAt: { $gte: liveTimeout } })
+            .sort({ createdAt: -1 })
+            .lean();
+        
+        // Map to format expected by frontend (e.g. mapping _id to id, createdAt to timestamp)
+        const formattedHits = recentDbHits.map(hit => ({
+            ...hit,
+            id: hit._id.toString(),
+            timestamp: hit.createdAt
+        }));
+
+        res.json(formattedHits);
+    } catch (error) {
+        console.error("Live monitor fetch error:", error);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 
 module.exports = router;

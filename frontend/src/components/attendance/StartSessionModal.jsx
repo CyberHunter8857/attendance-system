@@ -49,7 +49,7 @@ export function StartSessionModal({ onSessionStarted, defaultSubject = "", defau
 
       const { latitude, longitude } = position.coords;
 
-      const response = await fetch("http://localhost:5000/api/attendance/start", {
+      const response = await fetch("/api/attendance/start", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

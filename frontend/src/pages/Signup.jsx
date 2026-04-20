@@ -75,7 +75,7 @@ const Signup = () => {
         const descriptor = Array.from(detection.descriptor);
 
         // 2. Check Duplicate on Backend
-        const dupeRes = await fetch("http://localhost:5000/api/auth/check-duplicate-face", {
+        const dupeRes = await fetch("/api/auth/check-duplicate-face", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ descriptor })
@@ -211,7 +211,7 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/signup", {
+      const response = await fetch("/api/auth/signup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

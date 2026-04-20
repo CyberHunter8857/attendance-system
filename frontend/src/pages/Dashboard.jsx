@@ -45,7 +45,7 @@ const FaceVerificationModal = ({ isOpen, onOpenChange, sessionId, onSuccess, use
       // 3. Load Reference Photo & Descriptor
       setStatus("loading-photo");
       console.log("Loading reference photo:", user.photo);
-      const referenceImageUrl = user.photo.startsWith('http') ? user.photo : `http://localhost:5000${user.photo}`;
+      const referenceImageUrl = user.photo.startsWith('http') ? user.photo : `${user.photo}`;
       const img = await faceapi.fetchImage(referenceImageUrl);
       const refDetection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
       
@@ -215,7 +215,7 @@ const StudentDashboard = ({ user }) => {
 
   const fetchData = async () => {
     try {
-      const histRes = await fetch(`http://localhost:5000/api/attendance/student/${user.id}`, {
+      const histRes = await fetch(`/api/attendance/student/${user.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const histData = await histRes.json();
@@ -224,7 +224,7 @@ const StudentDashboard = ({ user }) => {
         if (histData.stats) setStats(histData.stats);
       }
 
-      const activeRes = await fetch(`http://localhost:5000/api/attendance/active`, {
+      const activeRes = await fetch(`/api/attendance/active`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const activeData = await activeRes.json();
@@ -257,7 +257,7 @@ const StudentDashboard = ({ user }) => {
 
       const { latitude, longitude } = position.coords;
 
-      const res = await fetch("http://localhost:5000/api/attendance/mark-present", {
+      const res = await fetch("/api/attendance/mark-present", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -450,7 +450,7 @@ const Dashboard = () => {
     setSessionAttendance([]);
     
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/session/${session._id}/attendance`, {
+      const res = await fetch(`/api/attendance/session/${session._id}/attendance`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -469,7 +469,7 @@ const Dashboard = () => {
 
   const fetchTeacherSessions = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/teacher/sessions", {
+      const res = await fetch("/api/attendance/teacher/sessions", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -484,7 +484,7 @@ const Dashboard = () => {
 
   const fetchRecentActivity = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/teacher/recent", {
+      const res = await fetch("/api/attendance/teacher/recent", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -505,7 +505,7 @@ const Dashboard = () => {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/teacher/stats", {
+      const res = await fetch("/api/attendance/teacher/stats", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -535,7 +535,7 @@ const Dashboard = () => {
 
   const stopSession = async (sessionId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/stop/${sessionId}`, {
+      const res = await fetch(`/api/attendance/stop/${sessionId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` }
       });
