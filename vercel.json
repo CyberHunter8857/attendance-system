@@ -16,12 +16,8 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/(.*\\..*)",
-      "destination": "/frontend/dist/$1"
-    },
-    {
       "source": "/(.*)",
-      "destination": "/frontend/dist/index.html"
+      "destination": "/index.html"
     }
   ]
 }
