@@ -118,6 +118,7 @@ const getDistance = (desc1, desc2) => {
 };
 
 // Check for duplicate face
+// ─── REPLACE this entire route ───────────────────────────────────────────────
 router.post("/check-duplicate-face", async (req, res) => {
     try {
         const { descriptor } = req.body;
@@ -125,17 +126,27 @@ router.post("/check-duplicate-face", async (req, res) => {
             return res.status(400).json({ error: "Invalid face descriptor" });
         }
 
-        // Fetch all users with valid face descriptors
-        const users = await User.find({ faceDescriptor: { $exists: true, $not: { $size: 0 } } });
+        // ✅ CHANGE 1: Only check against students (not teachers)
+        const users = await User.find({ 
+            role: "student",
+            faceDescriptor: { $exists: true, $not: { $size: 0 } } 
+        });
+
+        let closestDistance = 1.0;
 
         for (const user of users) {
-             const distance = getDistance(descriptor, user.faceDescriptor);
-             if (distance < 0.6) { // Face-api default threshold for "same person"
-                 return res.json({ 
-                     isDuplicate: true, 
-                     message: "This face is already registered in our system." 
-                 });
-             }
+            const distance = getDistance(descriptor, user.faceDescriptor);
+            // ✅ CHANGE 2: Log distances so you can debug from server console
+            console.log(`[FaceCheck] vs ${user.name}: ${distance.toFixed(4)}`);
+            if (distance < closestDistance) closestDistance = distance;
+        }
+
+        // ✅ CHANGE 3: Threshold 0.6 → 0.45 (safer for TinyFaceDetector)
+        if (closestDistance < 0.45) {
+            return res.json({ 
+                isDuplicate: true, 
+                message: "This face is already registered in our system."
+            });
         }
 
         return res.json({ isDuplicate: false });
