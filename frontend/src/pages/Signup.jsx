@@ -75,21 +75,24 @@ const Signup = () => {
         const descriptor = Array.from(detection.descriptor);
 
         // 2. Check Duplicate on Backend
-        const dupeRes = await fetch("/api/auth/check-duplicate-face", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ descriptor })
-        });
-        const dupeData = await dupeRes.json();
-
-        if (dupeData.isDuplicate) {
-          toast({
-            variant: "destructive",
-            title: "Identity Error",
-            description: dupeData.message || "This face is already registered."
+        if (role === "student") {
+          const dupeRes = await fetch("/api/auth/check-duplicate-face", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ descriptor }),
           });
-          setIsLoading(false);
-          return;
+          const dupeData = await dupeRes.json();
+
+          if (dupeData.isDuplicate) {
+            toast({
+              variant: "destructive",
+              title: "Identity Error",
+              description:
+                dupeData.message || "This face is already registered.",
+            });
+            setIsLoading(false);
+            return;
+          }
         }
 
         // 3. Capture image if not duplicate
